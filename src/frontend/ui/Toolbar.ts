@@ -13,14 +13,23 @@ export class Toolbar {
     const objectTypes: ObjectType[] = ["rectangle", "circle", "sprite", "text"];
     this.root.innerHTML = `
       <div class="toolbar-group">
-        ${objectTypes.map((type) => `<button data-add="${type}">Add ${type}</button>`).join("")}
+        ${objectTypes.map((type) => `<button class="toolbar-btn" data-add="${type}">Add ${type}</button>`).join("")}
+      </div>
+      <div class="toolbar-group grid-controls">
+        <label class="toolbar-check">
+          <input data-snap-toggle type="checkbox" ${this.state.snapToGrid ? "checked" : ""} />
+          <span>Snap</span>
+        </label>
+        <label class="toolbar-field">
+          <span>Grid</span>
+          <input data-grid-size type="number" min="4" max="256" step="4" value="${this.state.gridSize}" />
+        </label>
       </div>
       <div class="toolbar-group">
-        <button data-action="delete" ${this.state.selectedObjectIds.length > 0 ? "" : "disabled"}>Delete</button>
-        <button data-action="new">New</button>
-        <button data-action="save">Save</button>
-        <button data-action="import">Import JSON</button>
-        <button data-action="export">Export JSON</button>
+        <button class="toolbar-btn btn-new" data-action="new">New</button>
+        <button class="toolbar-btn btn-save" data-action="save">Save</button>
+        <button class="toolbar-btn btn-primary" data-action="import">Import JSON</button>
+        <button class="toolbar-btn btn-secondary" data-action="export">Export JSON</button>
         <input data-import-file type="file" accept="application/json,.json" hidden />
       </div>
     `;
@@ -33,6 +42,12 @@ export class Toolbar {
     this.root.querySelector<HTMLButtonElement>('[data-action="new"]')?.addEventListener("click", this.onNewScene);
     this.root.querySelector<HTMLButtonElement>('[data-action="delete"]')?.addEventListener("click", () => this.state.deleteSelected());
     this.root.querySelector<HTMLButtonElement>('[data-action="export"]')?.addEventListener("click", () => this.exportScene());
+    this.root.querySelector<HTMLInputElement>("[data-snap-toggle]")?.addEventListener("change", (event) => {
+      this.state.setSnapToGrid((event.target as HTMLInputElement).checked);
+    });
+    this.root.querySelector<HTMLInputElement>("[data-grid-size]")?.addEventListener("change", (event) => {
+      this.state.setGridSize(Number((event.target as HTMLInputElement).value));
+    });
 
     const importInput = this.root.querySelector<HTMLInputElement>("[data-import-file]");
     this.root.querySelector<HTMLButtonElement>('[data-action="import"]')?.addEventListener("click", () => importInput?.click());

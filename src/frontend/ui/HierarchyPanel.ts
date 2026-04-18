@@ -23,6 +23,7 @@ export class HierarchyPanel {
                   <span>${this.escape(object.name)}</span>
                   <small>${object.type} - z ${object.zIndex}</small>
                 </button>
+                <button class="object-copy" data-duplicate-object-id="${object.id}" aria-label="Duplicate ${this.escape(object.name)}">C</button>
                 <button class="object-delete" data-delete-object-id="${object.id}" aria-label="Delete ${this.escape(object.name)}">x</button>
               </div>
             `
@@ -37,6 +38,10 @@ export class HierarchyPanel {
 
     this.root.querySelectorAll<HTMLButtonElement>("[data-object-id]").forEach((button) => {
       button.addEventListener("click", () => this.state.selectObject(button.dataset.objectId ?? null));
+    });
+
+    this.root.querySelectorAll<HTMLButtonElement>("[data-duplicate-object-id]").forEach((button) => {
+      button.addEventListener("click", () => this.state.duplicateObject(button.dataset.duplicateObjectId ?? ""));
     });
 
     this.root.querySelectorAll<HTMLButtonElement>("[data-delete-object-id]").forEach((button) => {

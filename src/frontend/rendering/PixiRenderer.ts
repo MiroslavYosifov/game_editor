@@ -147,14 +147,16 @@ export class PixiRenderer {
     grid.beginFill(0xf4f7fb);
     grid.drawRect(0, 0, width, height);
     grid.endFill();
-    grid.lineStyle(1, 0xd8e0ea, 1);
+    const gridSize = this.state.gridSize;
 
-    for (let x = 0; x < width; x += 32) {
+    for (let x = 0; x < width; x += gridSize) {
+      grid.lineStyle(x % (gridSize * 4) === 0 ? 2 : 1, x % (gridSize * 4) === 0 ? 0xc7d2de : 0xd8e0ea, 1);
       grid.moveTo(x, 0);
       grid.lineTo(x, height);
     }
 
-    for (let y = 0; y < height; y += 32) {
+    for (let y = 0; y < height; y += gridSize) {
+      grid.lineStyle(y % (gridSize * 4) === 0 ? 2 : 1, y % (gridSize * 4) === 0 ? 0xc7d2de : 0xd8e0ea, 1);
       grid.moveTo(0, y);
       grid.lineTo(width, y);
     }

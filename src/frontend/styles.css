@@ -70,6 +70,68 @@ button:disabled:hover {
   gap: 8px;
 }
 
+.grid-controls {
+  align-items: center;
+}
+
+.toolbar-btn {
+  font-weight: 700;
+}
+
+.toolbar-btn:hover {
+  filter: brightness(0.94);
+}
+
+.btn-new {
+  background: #f8fafc;
+  border-color: #94a3b8;
+  color: #334155;
+}
+
+.btn-save {
+  background: #16a34a;
+  border-color: #15803d;
+  color: #ffffff;
+}
+
+.btn-primary {
+  background: #2563eb;
+  border-color: #1d4ed8;
+  color: #ffffff;
+}
+
+.btn-secondary {
+  background: #f59e0b;
+  border-color: #d97706;
+  color: #111827;
+}
+
+.toolbar-check,
+.toolbar-field {
+  align-items: center;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  display: inline-flex;
+  gap: 6px;
+  min-height: 38px;
+  padding: 6px 8px;
+}
+
+.toolbar-check span,
+.toolbar-field span {
+  color: #475569;
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.toolbar-field input {
+  border: 1px solid #b8c2d0;
+  border-radius: 6px;
+  padding: 4px 6px;
+  width: 72px;
+}
+
 .panel {
   background: #ffffff;
   min-width: 0;
@@ -163,7 +225,7 @@ h3 {
 .object-row {
   align-items: stretch;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 34px;
+  grid-template-columns: minmax(0, 1fr) 34px 34px;
   gap: 4px;
 }
 
@@ -175,11 +237,22 @@ h3 {
   width: 100%;
 }
 
+.object-copy,
 .object-delete {
   align-items: center;
   display: inline-flex;
   justify-content: center;
   padding: 0;
+}
+
+.object-copy {
+  color: #2563eb;
+  font-weight: 800;
+}
+
+.object-delete {
+  color: #dc2626;
+  font-weight: 800;
 }
 
 .object-select small {

@@ -26,6 +26,18 @@ export class PointerController {
     this.marquee.hidden = true;
     this.view.parentElement?.appendChild(this.marquee);
     window.addEventListener("keydown", (event) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "c" && !this.isTextInput(event.target)) {
+        event.preventDefault();
+        this.state.copySelected();
+        return;
+      }
+
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "v" && !this.isTextInput(event.target)) {
+        event.preventDefault();
+        this.state.pasteObjects();
+        return;
+      }
+
       if ((event.key === "Delete" || event.key === "Backspace") && !this.isTextInput(event.target)) {
         event.preventDefault();
         this.state.deleteSelected();
@@ -124,8 +136,8 @@ export class PointerController {
       this.objectStarts.map((object) => ({
         id: object.id,
         patch: {
-          x: Math.round(object.x + dx),
-          y: Math.round(object.y + dy)
+          x: this.state.snapValue(object.x + dx),
+          y: this.state.snapValue(object.y + dy)
         }
       }))
     );
@@ -163,10 +175,10 @@ export class PointerController {
     }
 
     this.state.updateSelected({
-      x: Math.round(patch.x),
-      y: Math.round(patch.y),
-      width: Math.round(patch.width),
-      height: Math.round(patch.height)
+      x: this.state.snapValue(patch.x),
+      y: this.state.snapValue(patch.y),
+      width: Math.max(minSize, this.state.snapValue(patch.width)),
+      height: Math.max(minSize, this.state.snapValue(patch.height))
     });
   }
 
