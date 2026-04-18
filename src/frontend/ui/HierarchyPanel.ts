@@ -18,10 +18,13 @@ export class HierarchyPanel {
         ${objects
           .map(
             (object) => `
-              <button class="object-row ${this.state.selectedObjectId === object.id ? "selected" : ""}" data-object-id="${object.id}">
-                <span>${this.escape(object.name)}</span>
-                <small>${object.type} · z ${object.zIndex}</small>
-              </button>
+              <div class="object-row ${this.state.selectedObjectId === object.id ? "selected" : ""}">
+                <button class="object-select" data-object-id="${object.id}">
+                  <span>${this.escape(object.name)}</span>
+                  <small>${object.type} - z ${object.zIndex}</small>
+                </button>
+                <button class="object-delete" data-delete-object-id="${object.id}" aria-label="Delete ${this.escape(object.name)}">x</button>
+              </div>
             `
           )
           .join("")}
@@ -34,6 +37,10 @@ export class HierarchyPanel {
 
     this.root.querySelectorAll<HTMLButtonElement>("[data-object-id]").forEach((button) => {
       button.addEventListener("click", () => this.state.selectObject(button.dataset.objectId ?? null));
+    });
+
+    this.root.querySelectorAll<HTMLButtonElement>("[data-delete-object-id]").forEach((button) => {
+      button.addEventListener("click", () => this.state.deleteObject(button.dataset.deleteObjectId ?? ""));
     });
   }
 

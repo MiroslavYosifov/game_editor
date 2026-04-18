@@ -2,9 +2,15 @@ import { Application, Container, Graphics, Text, TextStyle } from "pixi.js";
 import type { SceneObject } from "../../shared/types";
 import { EditorState } from "../state/EditorState";
 
+export type SelectionControl =
+  | { type: "resize"; handle: ResizeHandle };
+
+export type ResizeHandle = "nw" | "ne" | "sw" | "se";
+
 export class PixiRenderer {
   private readonly app: Application;
   private readonly world = new Container();
+  private readonly handleSize = 12;
 
   constructor(
     private readonly host: HTMLElement,
@@ -52,15 +58,45 @@ export class PixiRenderer {
     return sorted.find((object) => this.containsPoint(object, point)) ?? null;
   }
 
+  hitSelectionControl(point: { x: number; y: number }): SelectionControl | null {
+    const selected = this.state.selectedObject;
+    if (!selected) return null;
+
+    const local = this.toLocalPoint(selected, point);
+    const halfWidth = selected.width / 2;
+    const halfHeight = selected.height / 2;
+    const padding = 5;
+
+    const handles: Array<{ handle: ResizeHandle; x: number; y: number }> = [
+      { handle: "nw", x: -halfWidth - padding, y: -halfHeight - padding },
+      { handle: "ne", x: halfWidth + padding, y: -halfHeight - padding },
+      { handle: "sw", x: -halfWidth - padding, y: halfHeight + padding },
+      { handle: "se", x: halfWidth + padding, y: halfHeight + padding }
+    ];
+
+    const hit = handles.find((handle) => this.isNear(local, handle, this.handleSize / 2));
+    return hit ? { type: "resize", handle: hit.handle } : null;
+  }
+
   private containsPoint(object: SceneObject, point: { x: number; y: number }): boolean {
+    const local = this.toLocalPoint(object, point);
+    return local.x >= -object.width / 2 && local.y >= -object.height / 2 && local.x <= object.width / 2 && local.y <= object.height / 2;
+  }
+
+  private toLocalPoint(object: SceneObject, point: { x: number; y: number }): { x: number; y: number } {
     const cx = object.x + object.width / 2;
     const cy = object.y + object.height / 2;
     const radians = (-object.rotation * Math.PI) / 180;
     const dx = point.x - cx;
     const dy = point.y - cy;
-    const localX = dx * Math.cos(radians) - dy * Math.sin(radians) + object.width / 2;
-    const localY = dx * Math.sin(radians) + dy * Math.cos(radians) + object.height / 2;
-    return localX >= 0 && localY >= 0 && localX <= object.width && localY <= object.height;
+    return {
+      x: dx * Math.cos(radians) - dy * Math.sin(radians),
+      y: dx * Math.sin(radians) + dy * Math.cos(radians)
+    };
+  }
+
+  private isNear(point: { x: number; y: number }, target: { x: number; y: number }, radius: number): boolean {
+    return Math.abs(point.x - target.x) <= radius && Math.abs(point.y - target.y) <= radius;
   }
 
   private drawBackground(): void {
@@ -142,11 +178,23 @@ export class PixiRenderer {
     selection.position.set(object.x + object.width / 2, object.y + object.height / 2);
     selection.rotation = (object.rotation * Math.PI) / 180;
     selection.zIndex = 100000;
+    const padding = 5;
+    const halfHandle = this.handleSize / 2;
     selection.lineStyle(2, 0xef4444, 1);
-    selection.drawRect(-object.width / 2 - 5, -object.height / 2 - 5, object.width + 10, object.height + 10);
-    selection.beginFill(0xef4444);
-    selection.drawRect(object.width / 2 - 2, object.height / 2 - 2, 12, 12);
+    selection.drawRect(-object.width / 2 - padding, -object.height / 2 - padding, object.width + padding * 2, object.height + padding * 2);
+
+    selection.beginFill(0xffffff);
+    selection.lineStyle(2, 0xef4444, 1);
+    for (const handle of [
+      { x: -object.width / 2 - padding, y: -object.height / 2 - padding },
+      { x: object.width / 2 + padding, y: -object.height / 2 - padding },
+      { x: -object.width / 2 - padding, y: object.height / 2 + padding },
+      { x: object.width / 2 + padding, y: object.height / 2 + padding }
+    ]) {
+      selection.drawRect(handle.x - halfHandle, handle.y - halfHandle, this.handleSize, this.handleSize);
+    }
     selection.endFill();
+
     this.world.addChild(selection);
   }
 

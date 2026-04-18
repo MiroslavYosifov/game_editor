@@ -1,5 +1,5 @@
 import { createScene, createSceneObject } from "../../shared/factory";
-import type { EditorTool, ObjectType, Scene, SceneObject } from "../../shared/types";
+import type { ObjectType, Scene, SceneObject } from "../../shared/types";
 
 type Listener = () => void;
 
@@ -7,7 +7,6 @@ export class EditorState {
   private listeners = new Set<Listener>();
   scene: Scene = createScene("New Scene");
   selectedObjectId: string | null = null;
-  activeTool: EditorTool = "select";
 
   subscribe(listener: Listener): () => void {
     this.listeners.add(listener);
@@ -25,11 +24,6 @@ export class EditorState {
 
   setSceneName(name: string): void {
     this.scene = { ...this.scene, name, updatedAt: new Date().toISOString() };
-    this.emit();
-  }
-
-  setTool(tool: EditorTool): void {
-    this.activeTool = tool;
     this.emit();
   }
 
@@ -51,12 +45,16 @@ export class EditorState {
 
   deleteSelected(): void {
     if (!this.selectedObjectId) return;
+    this.deleteObject(this.selectedObjectId);
+  }
+
+  deleteObject(id: string): void {
     this.scene = {
       ...this.scene,
-      objects: this.scene.objects.filter((object) => object.id !== this.selectedObjectId),
+      objects: this.scene.objects.filter((object) => object.id !== id),
       updatedAt: new Date().toISOString()
     };
-    this.selectedObjectId = null;
+    if (this.selectedObjectId === id) this.selectedObjectId = null;
     this.emit();
   }
 

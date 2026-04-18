@@ -34,6 +34,17 @@ button.active {
   color: #ffffff;
 }
 
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+button:disabled:hover {
+  background: #ffffff;
+  border-color: #b8c2d0;
+  color: #111827;
+}
+
 .editor-shell {
   display: grid;
   grid-template-columns: minmax(190px, 260px) minmax(360px, 1fr) minmax(230px, 320px);
@@ -142,6 +153,13 @@ h3 {
 }
 
 .object-row {
+  align-items: stretch;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 34px;
+  gap: 4px;
+}
+
+.object-select {
   display: grid;
   gap: 4px;
   justify-items: start;
@@ -149,12 +167,26 @@ h3 {
   width: 100%;
 }
 
-.object-row small {
+.object-delete {
+  align-items: center;
+  display: inline-flex;
+  justify-content: center;
+  padding: 0;
+}
+
+.object-select small {
   color: #64748b;
 }
 
-.object-row.selected small,
-.object-row:hover small {
+.object-row.selected .object-select,
+.object-select:hover {
+  background: #111827;
+  border-color: #111827;
+  color: #ffffff;
+}
+
+.object-row.selected .object-select small,
+.object-select:hover small {
   color: #d8e0ea;
 }
 

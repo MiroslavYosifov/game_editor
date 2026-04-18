@@ -1,7 +1,5 @@
 export type ObjectType = "rectangle" | "circle" | "sprite" | "text";
 
-export type EditorTool = "select" | "move" | "resize" | "delete";
-
 export type PhysicsMode = "static" | "dynamic";
 
 export interface Vector2 {
