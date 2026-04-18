@@ -95,7 +95,7 @@ export class EditorState {
   }
 
   get selectedObject(): SceneObject | null {
-    return this.selectedObjectId ? this.getObject(this.selectedObjectId) : null;
+    return this.selectedObjectId ? (this.getObject(this.selectedObjectId) ?? null) : null;
   }
 
   getObject(id: string): SceneObject | undefined {

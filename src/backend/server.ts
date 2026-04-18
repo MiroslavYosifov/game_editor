@@ -6,6 +6,7 @@ import { createScene } from "../shared/factory";
 import type { Scene, SceneSummary } from "../shared/types";
 
 const port = Number(process.env.PORT ?? 3001);
+const host = process.env.HOST ?? "127.0.0.1";
 const root = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
 const dataFile = join(root, "data", "scenes.json");
 
@@ -21,8 +22,8 @@ const server = createServer(async (request, response) => {
   }
 });
 
-server.listen(port, "127.0.0.1", () => {
-  console.log(`Scene API running at http://127.0.0.1:${port}`);
+server.listen(port, host, () => {
+  console.log(`Scene API running at http://${host}:${port}`);
 });
 
 async function route(request: IncomingMessage, response: ServerResponse): Promise<void> {
