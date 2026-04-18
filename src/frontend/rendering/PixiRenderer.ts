@@ -49,8 +49,8 @@ export class PixiRenderer {
     this.drawSceneBounds();
     for (const object of this.state.scene.objects) this.drawObject(object);
 
-    const selected = this.state.selectedObject;
-    if (selected) this.drawSelection(selected);
+    const selectedObjects = this.state.selectedObjects;
+    for (const object of selectedObjects) this.drawSelection(object, selectedObjects.length === 1);
   }
 
   hitTest(point: { x: number; y: number }): SceneObject | null {
@@ -58,7 +58,12 @@ export class PixiRenderer {
     return sorted.find((object) => this.containsPoint(object, point)) ?? null;
   }
 
+  hitTestRect(rect: { x: number; y: number; width: number; height: number }): SceneObject[] {
+    return this.state.scene.objects.filter((object) => this.intersectsRect(object, rect));
+  }
+
   hitSelectionControl(point: { x: number; y: number }): SelectionControl | null {
+    if (this.state.selectedObjects.length !== 1) return null;
     const selected = this.state.selectedObject;
     if (!selected) return null;
 
@@ -81,6 +86,41 @@ export class PixiRenderer {
   private containsPoint(object: SceneObject, point: { x: number; y: number }): boolean {
     const local = this.toLocalPoint(object, point);
     return local.x >= -object.width / 2 && local.y >= -object.height / 2 && local.x <= object.width / 2 && local.y <= object.height / 2;
+  }
+
+  private intersectsRect(object: SceneObject, rect: { x: number; y: number; width: number; height: number }): boolean {
+    const bounds = this.getWorldBounds(object);
+    return (
+      bounds.x <= rect.x + rect.width &&
+      bounds.x + bounds.width >= rect.x &&
+      bounds.y <= rect.y + rect.height &&
+      bounds.y + bounds.height >= rect.y
+    );
+  }
+
+  private getWorldBounds(object: SceneObject): { x: number; y: number; width: number; height: number } {
+    const cx = object.x + object.width / 2;
+    const cy = object.y + object.height / 2;
+    const radians = (object.rotation * Math.PI) / 180;
+    const corners = [
+      { x: -object.width / 2, y: -object.height / 2 },
+      { x: object.width / 2, y: -object.height / 2 },
+      { x: -object.width / 2, y: object.height / 2 },
+      { x: object.width / 2, y: object.height / 2 }
+    ].map((corner) => ({
+      x: cx + corner.x * Math.cos(radians) - corner.y * Math.sin(radians),
+      y: cy + corner.x * Math.sin(radians) + corner.y * Math.cos(radians)
+    }));
+    const xs = corners.map((corner) => corner.x);
+    const ys = corners.map((corner) => corner.y);
+    const minX = Math.min(...xs);
+    const minY = Math.min(...ys);
+    return {
+      x: minX,
+      y: minY,
+      width: Math.max(...xs) - minX,
+      height: Math.max(...ys) - minY
+    };
   }
 
   private toLocalPoint(object: SceneObject, point: { x: number; y: number }): { x: number; y: number } {
@@ -173,7 +213,7 @@ export class PixiRenderer {
     this.world.addChild(display);
   }
 
-  private drawSelection(object: SceneObject): void {
+  private drawSelection(object: SceneObject, showHandles: boolean): void {
     const selection = new Graphics();
     selection.position.set(object.x + object.width / 2, object.y + object.height / 2);
     selection.rotation = (object.rotation * Math.PI) / 180;
@@ -182,6 +222,11 @@ export class PixiRenderer {
     const halfHandle = this.handleSize / 2;
     selection.lineStyle(2, 0xef4444, 1);
     selection.drawRect(-object.width / 2 - padding, -object.height / 2 - padding, object.width + padding * 2, object.height + padding * 2);
+
+    if (!showHandles) {
+      this.world.addChild(selection);
+      return;
+    }
 
     selection.beginFill(0xffffff);
     selection.lineStyle(2, 0xef4444, 1);

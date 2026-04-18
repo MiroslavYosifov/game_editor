@@ -6,7 +6,15 @@ type Listener = () => void;
 export class EditorState {
   private listeners = new Set<Listener>();
   scene: Scene = createScene("New Scene");
-  selectedObjectId: string | null = null;
+  selectedObjectIds: string[] = [];
+
+  get selectedObjectId(): string | null {
+    return this.selectedObjectIds[0] ?? null;
+  }
+
+  set selectedObjectId(id: string | null) {
+    this.selectedObjectIds = id ? [id] : [];
+  }
 
   subscribe(listener: Listener): () => void {
     this.listeners.add(listener);
@@ -18,7 +26,7 @@ export class EditorState {
       ...scene,
       objects: [...scene.objects].sort((a, b) => a.zIndex - b.zIndex)
     };
-    this.selectedObjectId = this.scene.objects[0]?.id ?? null;
+    this.selectedObjectIds = this.scene.objects[0] ? [this.scene.objects[0].id] : [];
     this.emit();
   }
 
@@ -34,18 +42,31 @@ export class EditorState {
       objects: [...this.scene.objects, object],
       updatedAt: new Date().toISOString()
     };
-    this.selectedObjectId = object.id;
+    this.selectedObjectIds = [object.id];
     this.emit();
   }
 
   selectObject(id: string | null): void {
-    this.selectedObjectId = id;
+    this.selectedObjectIds = id ? [id] : [];
+    this.emit();
+  }
+
+  selectObjects(ids: string[]): void {
+    const validIds = new Set(this.scene.objects.map((object) => object.id));
+    this.selectedObjectIds = [...new Set(ids)].filter((id) => validIds.has(id));
     this.emit();
   }
 
   deleteSelected(): void {
-    if (!this.selectedObjectId) return;
-    this.deleteObject(this.selectedObjectId);
+    if (this.selectedObjectIds.length === 0) return;
+    const selectedIds = new Set(this.selectedObjectIds);
+    this.scene = {
+      ...this.scene,
+      objects: this.scene.objects.filter((object) => !selectedIds.has(object.id)),
+      updatedAt: new Date().toISOString()
+    };
+    this.selectedObjectIds = [];
+    this.emit();
   }
 
   deleteObject(id: string): void {
@@ -54,7 +75,7 @@ export class EditorState {
       objects: this.scene.objects.filter((object) => object.id !== id),
       updatedAt: new Date().toISOString()
     };
-    if (this.selectedObjectId === id) this.selectedObjectId = null;
+    this.selectedObjectIds = this.selectedObjectIds.filter((selectedId) => selectedId !== id);
     this.emit();
   }
 
@@ -68,6 +89,21 @@ export class EditorState {
       ...this.scene,
       objects: this.scene.objects
         .map((object) => (object.id === id ? { ...object, ...patch } : object))
+        .sort((a, b) => a.zIndex - b.zIndex),
+      updatedAt: new Date().toISOString()
+    };
+    this.emit();
+  }
+
+  updateObjects(patches: Array<{ id: string; patch: Partial<SceneObject> }>): void {
+    const patchById = new Map(patches.map((item) => [item.id, item.patch]));
+    this.scene = {
+      ...this.scene,
+      objects: this.scene.objects
+        .map((object) => {
+          const patch = patchById.get(object.id);
+          return patch ? { ...object, ...patch } : object;
+        })
         .sort((a, b) => a.zIndex - b.zIndex),
       updatedAt: new Date().toISOString()
     };
@@ -94,6 +130,15 @@ export class EditorState {
 
   get selectedObject(): SceneObject | null {
     return this.selectedObjectId ? (this.getObject(this.selectedObjectId) ?? null) : null;
+  }
+
+  get selectedObjects(): SceneObject[] {
+    const selectedIds = new Set(this.selectedObjectIds);
+    return this.scene.objects.filter((object) => selectedIds.has(object.id));
+  }
+
+  isSelected(id: string): boolean {
+    return this.selectedObjectIds.includes(id);
   }
 
   getObject(id: string): SceneObject | undefined {

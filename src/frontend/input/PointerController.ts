@@ -2,13 +2,16 @@ import { PixiRenderer, type ResizeHandle } from "../rendering/PixiRenderer";
 import { EditorState } from "../state/EditorState";
 import type { SceneObject } from "../../shared/types";
 
-type DragMode = "move" | "resize" | null;
+type DragMode = "move" | "resize" | "select" | null;
+type ObjectStart = Pick<SceneObject, "id" | "x" | "y" | "width" | "height">;
 
 export class PointerController {
   private dragMode: DragMode = null;
   private resizeHandle: ResizeHandle | null = null;
   private dragStart = { x: 0, y: 0 };
   private objectStart = { x: 0, y: 0, width: 0, height: 0 };
+  private objectStarts: ObjectStart[] = [];
+  private readonly marquee = document.createElement("div");
 
   constructor(
     private readonly view: HTMLCanvasElement,
@@ -17,8 +20,11 @@ export class PointerController {
   ) {
     view.addEventListener("pointerdown", (event) => this.onPointerDown(event));
     view.addEventListener("pointermove", (event) => this.onPointerMove(event));
-    view.addEventListener("pointerup", () => this.onPointerUp());
-    view.addEventListener("pointercancel", () => this.onPointerUp());
+    view.addEventListener("pointerup", (event) => this.onPointerUp(event));
+    view.addEventListener("pointercancel", (event) => this.onPointerUp(event));
+    this.marquee.className = "selection-marquee";
+    this.marquee.hidden = true;
+    this.view.parentElement?.appendChild(this.marquee);
     window.addEventListener("keydown", (event) => {
       if ((event.key === "Delete" || event.key === "Backspace") && !this.isTextInput(event.target)) {
         event.preventDefault();
@@ -38,8 +44,12 @@ export class PointerController {
     }
 
     const hit = this.renderer.hitTest(point);
-    this.state.selectObject(hit?.id ?? null);
-    if (!hit) return;
+    if (!hit) {
+      this.startSelectionDrag(event, point);
+      return;
+    }
+
+    if (!this.state.isSelected(hit.id)) this.state.selectObject(hit.id);
 
     this.startDrag(event, point, "move", hit);
   }
@@ -55,8 +65,23 @@ export class PointerController {
     this.view.setPointerCapture(event.pointerId);
     this.dragStart = point;
     this.objectStart = { x: object.x, y: object.y, width: object.width, height: object.height };
+    this.objectStarts = this.state.selectedObjects.map((selected) => ({
+      id: selected.id,
+      x: selected.x,
+      y: selected.y,
+      width: selected.width,
+      height: selected.height
+    }));
     this.dragMode = mode;
     this.resizeHandle = handle;
+  }
+
+  private startSelectionDrag(event: PointerEvent, point: { x: number; y: number }): void {
+    this.view.setPointerCapture(event.pointerId);
+    this.dragStart = point;
+    this.dragMode = "select";
+    this.marquee.hidden = false;
+    this.updateMarquee(point);
   }
 
   private onPointerMove(event: PointerEvent): void {
@@ -65,24 +90,45 @@ export class PointerController {
       return;
     }
 
-    if (!this.dragMode || !this.state.selectedObjectId) return;
+    if (!this.dragMode) return;
     const point = this.toViewportPoint(event);
     const dx = point.x - this.dragStart.x;
     const dy = point.y - this.dragStart.y;
 
-    if (this.dragMode === "move") {
-      this.state.updateSelected({
-        x: Math.round(this.objectStart.x + dx),
-        y: Math.round(this.objectStart.y + dy)
-      });
+    if (this.dragMode === "select") {
+      this.updateMarquee(point);
+    } else if (this.dragMode === "move") {
+      if (this.objectStarts.length === 0) return;
+      this.moveSelected(dx, dy);
     } else {
+      if (!this.state.selectedObjectId) return;
       this.resizeSelected(dx, dy);
     }
   }
 
-  private onPointerUp(): void {
+  private onPointerUp(event: PointerEvent): void {
+    if (this.dragMode === "select") {
+      const rect = this.getSelectionRect(this.dragStart, this.toViewportPoint(event));
+      const selected = rect.width > 3 || rect.height > 3 ? this.renderer.hitTestRect(rect) : [];
+      this.state.selectObjects(selected.map((object) => object.id));
+    }
+
     this.dragMode = null;
     this.resizeHandle = null;
+    this.objectStarts = [];
+    this.marquee.hidden = true;
+  }
+
+  private moveSelected(dx: number, dy: number): void {
+    this.state.updateObjects(
+      this.objectStarts.map((object) => ({
+        id: object.id,
+        patch: {
+          x: Math.round(object.x + dx),
+          y: Math.round(object.y + dy)
+        }
+      }))
+    );
   }
 
   private resizeSelected(dx: number, dy: number): void {
@@ -133,6 +179,25 @@ export class PointerController {
     }
 
     this.view.style.cursor = this.renderer.hitTest(point) ? "move" : "default";
+  }
+
+  private updateMarquee(point: { x: number; y: number }): void {
+    const rect = this.getSelectionRect(this.dragStart, point);
+    this.marquee.style.left = `${rect.x}px`;
+    this.marquee.style.top = `${rect.y}px`;
+    this.marquee.style.width = `${rect.width}px`;
+    this.marquee.style.height = `${rect.height}px`;
+  }
+
+  private getSelectionRect(start: { x: number; y: number }, end: { x: number; y: number }): { x: number; y: number; width: number; height: number } {
+    const x = Math.min(start.x, end.x);
+    const y = Math.min(start.y, end.y);
+    return {
+      x,
+      y,
+      width: Math.max(start.x, end.x) - x,
+      height: Math.max(start.y, end.y) - y
+    };
   }
 
   private toViewportPoint(event: PointerEvent): { x: number; y: number } {

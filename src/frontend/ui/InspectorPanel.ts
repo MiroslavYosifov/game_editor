@@ -8,6 +8,11 @@ export class InspectorPanel {
   ) {}
 
   render(): void {
+    if (this.state.selectedObjects.length > 1) {
+      this.root.innerHTML = `<h2>Properties</h2><p class="empty">${this.state.selectedObjects.length} objects selected. Drag them in the scene to move them together.</p>`;
+      return;
+    }
+
     const object = this.state.selectedObject;
     if (!object) {
       this.root.innerHTML = `<h2>Properties</h2><p class="empty">Select an object to edit its properties.</p>`;

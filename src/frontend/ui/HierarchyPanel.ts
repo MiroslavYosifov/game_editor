@@ -18,7 +18,7 @@ export class HierarchyPanel {
         ${objects
           .map(
             (object) => `
-              <div class="object-row ${this.state.selectedObjectId === object.id ? "selected" : ""}">
+              <div class="object-row ${this.state.isSelected(object.id) ? "selected" : ""}">
                 <button class="object-select" data-object-id="${object.id}">
                   <span>${this.escape(object.name)}</span>
                   <small>${object.type} - z ${object.zIndex}</small>
