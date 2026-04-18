@@ -26,6 +26,8 @@ export class Toolbar {
         </label>
       </div>
       <div class="toolbar-group">
+        <button class="toolbar-btn btn-undo" data-action="undo" ${this.state.canUndo ? "" : "disabled"}>Undo</button>
+        <button class="toolbar-btn btn-redo" data-action="redo" ${this.state.canRedo ? "" : "disabled"}>Redo</button>
         <button class="toolbar-btn btn-new" data-action="new">New</button>
         <button class="toolbar-btn btn-save" data-action="save">Save</button>
         <button class="toolbar-btn btn-primary" data-action="import">Import JSON</button>
@@ -40,13 +42,16 @@ export class Toolbar {
 
     this.root.querySelector<HTMLButtonElement>('[data-action="save"]')?.addEventListener("click", this.onSave);
     this.root.querySelector<HTMLButtonElement>('[data-action="new"]')?.addEventListener("click", this.onNewScene);
+    this.root.querySelector<HTMLButtonElement>('[data-action="undo"]')?.addEventListener("click", () => this.state.undo());
+    this.root.querySelector<HTMLButtonElement>('[data-action="redo"]')?.addEventListener("click", () => this.state.redo());
     this.root.querySelector<HTMLButtonElement>('[data-action="delete"]')?.addEventListener("click", () => this.state.deleteSelected());
     this.root.querySelector<HTMLButtonElement>('[data-action="export"]')?.addEventListener("click", () => this.exportScene());
     this.root.querySelector<HTMLInputElement>("[data-snap-toggle]")?.addEventListener("change", (event) => {
       this.state.setSnapToGrid((event.target as HTMLInputElement).checked);
     });
-    this.root.querySelector<HTMLInputElement>("[data-grid-size]")?.addEventListener("change", (event) => {
-      this.state.setGridSize(Number((event.target as HTMLInputElement).value));
+    this.root.querySelector<HTMLInputElement>("[data-grid-size]")?.addEventListener("input", (event) => {
+      const value = Number((event.target as HTMLInputElement).value);
+      if (Number.isFinite(value)) this.state.previewGridSize(value);
     });
 
     const importInput = this.root.querySelector<HTMLInputElement>("[data-import-file]");

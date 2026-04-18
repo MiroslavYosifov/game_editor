@@ -26,6 +26,19 @@ export class PointerController {
     this.marquee.hidden = true;
     this.view.parentElement?.appendChild(this.marquee);
     window.addEventListener("keydown", (event) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z" && !this.isTextInput(event.target)) {
+        event.preventDefault();
+        if (event.shiftKey) this.state.redo();
+        else this.state.undo();
+        return;
+      }
+
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "y" && !this.isTextInput(event.target)) {
+        event.preventDefault();
+        this.state.redo();
+        return;
+      }
+
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "c" && !this.isTextInput(event.target)) {
         event.preventDefault();
         this.state.copySelected();
@@ -86,6 +99,7 @@ export class PointerController {
     }));
     this.dragMode = mode;
     this.resizeHandle = handle;
+    if (mode === "move" || mode === "resize") this.state.beginHistoryBatch();
   }
 
   private startSelectionDrag(event: PointerEvent, point: { x: number; y: number }): void {
@@ -129,6 +143,7 @@ export class PointerController {
     this.resizeHandle = null;
     this.objectStarts = [];
     this.marquee.hidden = true;
+    this.state.endHistoryBatch();
   }
 
   private moveSelected(dx: number, dy: number): void {

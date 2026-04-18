@@ -62,7 +62,7 @@ const toolbar = new Toolbar(
 );
 
 state.subscribe(() => {
-  toolbar.render();
+  if (!toolbarRoot.querySelector("[data-grid-size]:focus")) toolbar.render();
   hierarchy.render();
   inspector.render();
   renderer.render();

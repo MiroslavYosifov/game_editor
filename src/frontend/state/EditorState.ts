@@ -2,9 +2,20 @@ import { createId, createScene, createSceneObject } from "../../shared/factory";
 import type { ObjectType, Scene, SceneObject } from "../../shared/types";
 
 type Listener = () => void;
+interface HistorySnapshot {
+  scene: Scene;
+  selectedObjectIds: string[];
+  gridSize: number;
+  snapToGrid: boolean;
+}
 
 export class EditorState {
   private listeners = new Set<Listener>();
+  private readonly undoStack: HistorySnapshot[] = [];
+  private readonly redoStack: HistorySnapshot[] = [];
+  private isRestoringHistory = false;
+  private isBatchingHistory = false;
+  private hasBatchHistory = false;
   scene: Scene = createScene("New Scene");
   selectedObjectIds: string[] = [];
   private clipboardObjects: SceneObject[] = [];
@@ -25,6 +36,7 @@ export class EditorState {
   }
 
   setScene(scene: Scene): void {
+    this.recordHistory();
     this.scene = {
       ...scene,
       objects: [...scene.objects].sort((a, b) => a.zIndex - b.zIndex)
@@ -34,16 +46,24 @@ export class EditorState {
   }
 
   setSceneName(name: string): void {
+    this.recordHistory();
     this.scene = { ...this.scene, name, updatedAt: new Date().toISOString() };
     this.emit();
   }
 
   setGridSize(size: number): void {
+    this.recordHistory();
+    this.gridSize = Math.max(4, Math.min(256, Math.round(size)));
+    this.emit();
+  }
+
+  previewGridSize(size: number): void {
     this.gridSize = Math.max(4, Math.min(256, Math.round(size)));
     this.emit();
   }
 
   setSnapToGrid(enabled: boolean): void {
+    this.recordHistory();
     this.snapToGrid = enabled;
     this.emit();
   }
@@ -54,6 +74,7 @@ export class EditorState {
   }
 
   addObject(type: ObjectType): void {
+    this.recordHistory();
     const object = createSceneObject(type, this.scene.objects.length + 1);
     this.scene = {
       ...this.scene,
@@ -77,6 +98,7 @@ export class EditorState {
 
   deleteSelected(): void {
     if (this.selectedObjectIds.length === 0) return;
+    this.recordHistory();
     const selectedIds = new Set(this.selectedObjectIds);
     this.scene = {
       ...this.scene,
@@ -88,6 +110,8 @@ export class EditorState {
   }
 
   deleteObject(id: string): void {
+    if (!this.getObject(id)) return;
+    this.recordHistory();
     this.scene = {
       ...this.scene,
       objects: this.scene.objects.filter((object) => object.id !== id),
@@ -116,6 +140,7 @@ export class EditorState {
 
   pasteObjects(): void {
     if (this.clipboardObjects.length === 0) return;
+    this.recordHistory();
     const offset = this.snapToGrid ? this.gridSize : 20;
     const maxZ = this.scene.objects.reduce((max, object) => Math.max(max, object.zIndex), 0);
     const copies = this.clipboardObjects.map((object, index) => ({
@@ -148,6 +173,8 @@ export class EditorState {
   }
 
   updateObject(id: string, patch: Partial<SceneObject>): void {
+    if (!this.getObject(id)) return;
+    this.recordHistory();
     this.scene = {
       ...this.scene,
       objects: this.scene.objects
@@ -159,6 +186,8 @@ export class EditorState {
   }
 
   updateObjects(patches: Array<{ id: string; patch: Partial<SceneObject> }>): void {
+    if (patches.length === 0) return;
+    this.recordHistory();
     const patchById = new Map(patches.map((item) => [item.id, item.patch]));
     this.scene = {
       ...this.scene,
@@ -208,7 +237,82 @@ export class EditorState {
     return this.scene.objects.find((object) => object.id === id);
   }
 
+  beginHistoryBatch(): void {
+    this.isBatchingHistory = true;
+    this.hasBatchHistory = false;
+  }
+
+  endHistoryBatch(): void {
+    this.isBatchingHistory = false;
+    this.hasBatchHistory = false;
+  }
+
+  undo(): void {
+    const snapshot = this.undoStack.pop();
+    if (!snapshot) return;
+    this.redoStack.push(this.createSnapshot());
+    this.restoreSnapshot(snapshot);
+  }
+
+  redo(): void {
+    const snapshot = this.redoStack.pop();
+    if (!snapshot) return;
+    this.undoStack.push(this.createSnapshot());
+    this.restoreSnapshot(snapshot);
+  }
+
+  get canUndo(): boolean {
+    return this.undoStack.length > 0;
+  }
+
+  get canRedo(): boolean {
+    return this.redoStack.length > 0;
+  }
+
   private emit(): void {
     for (const listener of this.listeners) listener();
+  }
+
+  private recordHistory(): void {
+    if (this.isRestoringHistory) return;
+    if (this.isBatchingHistory && this.hasBatchHistory) return;
+
+    this.undoStack.push(this.createSnapshot());
+    if (this.undoStack.length > 100) this.undoStack.shift();
+    this.redoStack.length = 0;
+    this.hasBatchHistory = true;
+  }
+
+  private createSnapshot(): HistorySnapshot {
+    return {
+      scene: this.cloneScene(this.scene),
+      selectedObjectIds: [...this.selectedObjectIds],
+      gridSize: this.gridSize,
+      snapToGrid: this.snapToGrid
+    };
+  }
+
+  private restoreSnapshot(snapshot: HistorySnapshot): void {
+    this.isRestoringHistory = true;
+    this.scene = this.cloneScene(snapshot.scene);
+    this.selectedObjectIds = [...snapshot.selectedObjectIds];
+    this.gridSize = snapshot.gridSize;
+    this.snapToGrid = snapshot.snapToGrid;
+    this.isRestoringHistory = false;
+    this.emit();
+  }
+
+  private cloneScene(scene: Scene): Scene {
+    return {
+      ...scene,
+      objects: scene.objects.map((object) => ({
+        ...object,
+        physics: {
+          ...object.physics,
+          gravity: { ...object.physics.gravity },
+          velocity: { ...object.physics.velocity }
+        }
+      }))
+    };
   }
 }

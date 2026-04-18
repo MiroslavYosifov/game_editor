@@ -88,6 +88,18 @@ button:disabled:hover {
   color: #334155;
 }
 
+.btn-undo {
+  background: #e0f2fe;
+  border-color: #38bdf8;
+  color: #075985;
+}
+
+.btn-redo {
+  background: #ede9fe;
+  border-color: #8b5cf6;
+  color: #4c1d95;
+}
+
 .btn-save {
   background: #16a34a;
   border-color: #15803d;
