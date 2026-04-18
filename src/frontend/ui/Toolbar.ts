@@ -1,10 +1,15 @@
-import type { ObjectType, Scene } from "../../shared/types";
+import type { ObjectType, Scene, SceneSummary } from "../../shared/types";
 import { EditorState } from "../state/EditorState";
+
+const exampleSceneId = "example-platform-scene";
 
 export class Toolbar {
   constructor(
     private readonly root: HTMLElement,
     private readonly state: EditorState,
+    private readonly getScenes: () => SceneSummary[],
+    private readonly onLoadScene: (id: string) => void,
+    private readonly onRefreshScenes: () => void,
     private readonly onSave: () => void,
     private readonly onNewScene: () => void
   ) {}
@@ -25,6 +30,26 @@ export class Toolbar {
           <input data-grid-size type="number" min="4" max="256" step="4" value="${this.state.gridSize}" />
         </label>
       </div>
+      <div class="toolbar-group load-controls">
+        <label class="toolbar-field scene-load-field">
+          <span>Scene</span>
+          <select data-load-scene>
+            <option value="${exampleSceneId}" ${this.state.scene.id === exampleSceneId ? "selected" : ""}>Example Platform Scene</option>
+            ${this.getScenes()
+              .filter((scene) => scene.id !== exampleSceneId)
+              .map(
+                (scene) => `
+                  <option value="${scene.id}" ${this.state.scene.id === scene.id ? "selected" : ""}>
+                    ${this.escape(scene.name)} (${scene.objectCount})
+                  </option>
+                `
+              )
+              .join("")}
+          </select>
+        </label>
+        <button class="toolbar-btn" data-action="load-scene">Load</button>
+        <button class="toolbar-btn" data-action="refresh-scenes">Refresh</button>
+      </div>
       <div class="toolbar-group">
         <button class="toolbar-btn btn-undo" data-action="undo" ${this.state.canUndo ? "" : "disabled"}>Undo</button>
         <button class="toolbar-btn btn-redo" data-action="redo" ${this.state.canRedo ? "" : "disabled"}>Redo</button>
@@ -42,6 +67,11 @@ export class Toolbar {
 
     this.root.querySelector<HTMLButtonElement>('[data-action="save"]')?.addEventListener("click", this.onSave);
     this.root.querySelector<HTMLButtonElement>('[data-action="new"]')?.addEventListener("click", this.onNewScene);
+    this.root.querySelector<HTMLButtonElement>('[data-action="load-scene"]')?.addEventListener("click", () => {
+      const sceneId = this.root.querySelector<HTMLSelectElement>("[data-load-scene]")?.value;
+      if (sceneId) this.onLoadScene(sceneId);
+    });
+    this.root.querySelector<HTMLButtonElement>('[data-action="refresh-scenes"]')?.addEventListener("click", this.onRefreshScenes);
     this.root.querySelector<HTMLButtonElement>('[data-action="undo"]')?.addEventListener("click", () => this.state.undo());
     this.root.querySelector<HTMLButtonElement>('[data-action="redo"]')?.addEventListener("click", () => this.state.redo());
     this.root.querySelector<HTMLButtonElement>('[data-action="delete"]')?.addEventListener("click", () => this.state.deleteSelected());
@@ -97,5 +127,12 @@ export class Toolbar {
 
   private toFileName(value: string): string {
     return value.trim().replace(/[^a-z0-9-_]+/gi, "-").replace(/^-+|-+$/g, "").toLowerCase() || "scene";
+  }
+
+  private escape(value: string): string {
+    return value.replace(/[&<>"']/g, (char) => {
+      const entities: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" };
+      return entities[char];
+    });
   }
 }

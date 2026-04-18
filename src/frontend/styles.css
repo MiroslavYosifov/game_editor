@@ -74,6 +74,10 @@ button:disabled:hover {
   align-items: center;
 }
 
+.load-controls {
+  align-items: center;
+}
+
 .toolbar-btn {
   font-weight: 700;
 }
@@ -137,11 +141,20 @@ button:disabled:hover {
   text-transform: uppercase;
 }
 
-.toolbar-field input {
+.toolbar-field input,
+.toolbar-field select {
   border: 1px solid #b8c2d0;
   border-radius: 6px;
   padding: 4px 6px;
+}
+
+.toolbar-field input {
   width: 72px;
+}
+
+.scene-load-field select {
+  max-width: 220px;
+  min-width: 180px;
 }
 
 .panel {

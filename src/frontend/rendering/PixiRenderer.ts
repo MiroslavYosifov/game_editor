@@ -9,8 +9,10 @@ export type ResizeHandle = "nw" | "ne" | "sw" | "se";
 
 export class PixiRenderer {
   private readonly app: Application;
+  private readonly viewportBackground = new Graphics();
   private readonly world = new Container();
   private readonly handleSize = 12;
+  private camera = { scale: 1, x: 0, y: 0 };
 
   constructor(
     private readonly host: HTMLElement,
@@ -25,6 +27,8 @@ export class PixiRenderer {
 
     this.app.stage.sortableChildren = true;
     this.world.sortableChildren = true;
+    this.viewportBackground.zIndex = -2000;
+    this.app.stage.addChild(this.viewportBackground);
     this.app.stage.addChild(this.world);
     this.view.setAttribute("aria-label", "2D scene WebGL viewport");
     this.view.setAttribute("role", "img");
@@ -43,8 +47,26 @@ export class PixiRenderer {
     this.render();
   }
 
+  toScenePoint(point: { x: number; y: number }): { x: number; y: number } {
+    return {
+      x: (point.x - this.camera.x) / this.camera.scale,
+      y: (point.y - this.camera.y) / this.camera.scale
+    };
+  }
+
+  toViewportRect(rect: { x: number; y: number; width: number; height: number }): { x: number; y: number; width: number; height: number } {
+    return {
+      x: rect.x * this.camera.scale + this.camera.x,
+      y: rect.y * this.camera.scale + this.camera.y,
+      width: rect.width * this.camera.scale,
+      height: rect.height * this.camera.scale
+    };
+  }
+
   render(): void {
     this.world.removeChildren().forEach((child) => child.destroy({ children: true }));
+    this.updateCamera();
+    this.drawViewportBackground();
     this.drawBackground();
     this.drawSceneBounds();
     for (const object of this.state.scene.objects) this.drawObject(object);
@@ -79,7 +101,7 @@ export class PixiRenderer {
       { handle: "se", x: halfWidth + padding, y: halfHeight + padding }
     ];
 
-    const hit = handles.find((handle) => this.isNear(local, handle, this.handleSize / 2));
+    const hit = handles.find((handle) => this.isNear(local, handle, this.toWorldPixels(this.handleSize) / 2));
     return hit ? { type: "resize", handle: hit.handle } : null;
   }
 
@@ -140,8 +162,8 @@ export class PixiRenderer {
   }
 
   private drawBackground(): void {
-    const width = this.host.clientWidth;
-    const height = this.host.clientHeight;
+    const width = this.state.scene.width;
+    const height = this.state.scene.height;
     const grid = new Graphics();
     grid.zIndex = -1000;
     grid.beginFill(0xf4f7fb);
@@ -162,6 +184,25 @@ export class PixiRenderer {
     }
 
     this.world.addChild(grid);
+  }
+
+  private drawViewportBackground(): void {
+    this.viewportBackground.clear();
+    this.viewportBackground.beginFill(0xe2e8f0);
+    this.viewportBackground.drawRect(0, 0, this.host.clientWidth, this.host.clientHeight);
+    this.viewportBackground.endFill();
+  }
+
+  private updateCamera(): void {
+    const padding = 24;
+    const width = Math.max(1, this.host.clientWidth);
+    const height = Math.max(1, this.host.clientHeight);
+    const scale = Math.min((width - padding * 2) / this.state.scene.width, (height - padding * 2) / this.state.scene.height);
+    this.camera.scale = Math.max(0.1, Math.min(1, scale));
+    this.camera.x = Math.round((width - this.state.scene.width * this.camera.scale) / 2);
+    this.camera.y = Math.round((height - this.state.scene.height * this.camera.scale) / 2);
+    this.world.position.set(this.camera.x, this.camera.y);
+    this.world.scale.set(this.camera.scale);
   }
 
   private drawSceneBounds(): void {
@@ -221,8 +262,9 @@ export class PixiRenderer {
     selection.rotation = (object.rotation * Math.PI) / 180;
     selection.zIndex = 100000;
     const padding = 5;
-    const halfHandle = this.handleSize / 2;
-    selection.lineStyle(2, 0xef4444, 1);
+    const handleSize = this.toWorldPixels(this.handleSize);
+    const halfHandle = handleSize / 2;
+    selection.lineStyle(this.toWorldPixels(2), 0xef4444, 1);
     selection.drawRect(-object.width / 2 - padding, -object.height / 2 - padding, object.width + padding * 2, object.height + padding * 2);
 
     if (!showHandles) {
@@ -231,14 +273,14 @@ export class PixiRenderer {
     }
 
     selection.beginFill(0xffffff);
-    selection.lineStyle(2, 0xef4444, 1);
+    selection.lineStyle(this.toWorldPixels(2), 0xef4444, 1);
     for (const handle of [
       { x: -object.width / 2 - padding, y: -object.height / 2 - padding },
       { x: object.width / 2 + padding, y: -object.height / 2 - padding },
       { x: -object.width / 2 - padding, y: object.height / 2 + padding },
       { x: object.width / 2 + padding, y: object.height / 2 + padding }
     ]) {
-      selection.drawRect(handle.x - halfHandle, handle.y - halfHandle, this.handleSize, this.handleSize);
+      selection.drawRect(handle.x - halfHandle, handle.y - halfHandle, handleSize, handleSize);
     }
     selection.endFill();
 
@@ -249,5 +291,9 @@ export class PixiRenderer {
     const normalized = value.replace("#", "");
     const parsed = Number.parseInt(normalized, 16);
     return Number.isFinite(parsed) ? parsed : 0x16a34a;
+  }
+
+  private toWorldPixels(value: number): number {
+    return value / this.camera.scale;
   }
 }

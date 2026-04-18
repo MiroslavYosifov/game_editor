@@ -59,7 +59,7 @@ export class PointerController {
   }
 
   private onPointerDown(event: PointerEvent): void {
-    const point = this.toViewportPoint(event);
+    const point = this.toScenePoint(event);
     const control = this.renderer.hitSelectionControl(point);
 
     const selected = this.state.selectedObject;
@@ -117,7 +117,7 @@ export class PointerController {
     }
 
     if (!this.dragMode) return;
-    const point = this.toViewportPoint(event);
+    const point = this.toScenePoint(event);
     const dx = point.x - this.dragStart.x;
     const dy = point.y - this.dragStart.y;
 
@@ -134,7 +134,7 @@ export class PointerController {
 
   private onPointerUp(event: PointerEvent): void {
     if (this.dragMode === "select") {
-      const rect = this.getSelectionRect(this.dragStart, this.toViewportPoint(event));
+      const rect = this.getSelectionRect(this.dragStart, this.toScenePoint(event));
       const selected = rect.width > 3 || rect.height > 3 ? this.renderer.hitTestRect(rect) : [];
       this.state.selectObjects(selected.map((object) => object.id));
     }
@@ -198,7 +198,7 @@ export class PointerController {
   }
 
   private updateCursor(event: PointerEvent): void {
-    const point = this.toViewportPoint(event);
+    const point = this.toScenePoint(event);
     const control = this.renderer.hitSelectionControl(point);
     if (control?.type === "resize") {
       this.view.style.cursor = control.handle === "nw" || control.handle === "se" ? "nwse-resize" : "nesw-resize";
@@ -210,10 +210,11 @@ export class PointerController {
 
   private updateMarquee(point: { x: number; y: number }): void {
     const rect = this.getSelectionRect(this.dragStart, point);
-    this.marquee.style.left = `${rect.x}px`;
-    this.marquee.style.top = `${rect.y}px`;
-    this.marquee.style.width = `${rect.width}px`;
-    this.marquee.style.height = `${rect.height}px`;
+    const viewportRect = this.renderer.toViewportRect(rect);
+    this.marquee.style.left = `${viewportRect.x}px`;
+    this.marquee.style.top = `${viewportRect.y}px`;
+    this.marquee.style.width = `${viewportRect.width}px`;
+    this.marquee.style.height = `${viewportRect.height}px`;
   }
 
   private getSelectionRect(start: { x: number; y: number }, end: { x: number; y: number }): { x: number; y: number; width: number; height: number } {
@@ -233,6 +234,10 @@ export class PointerController {
       x: event.clientX - rect.left,
       y: event.clientY - rect.top
     };
+  }
+
+  private toScenePoint(event: PointerEvent): { x: number; y: number } {
+    return this.renderer.toScenePoint(this.toViewportPoint(event));
   }
 
   private isTextInput(target: EventTarget | null): boolean {
