@@ -61,9 +61,9 @@ const refreshScenes = async (): Promise<void> => {
 
 const loadScene = async (sceneId: string): Promise<void> => {
   try {
-    if (sceneId === "example-platform-scene") {
+    if (sceneId === "example-snake-scene") {
       state.setScene(createExamplePlatformScene());
-      setStatus("Loaded Example Platform Scene");
+      setStatus("Loaded Snake Game Scene");
       return;
     }
 
@@ -111,13 +111,13 @@ async function boot(): Promise<void> {
   renderer.render();
 
   state.setScene(createExamplePlatformScene());
-  setStatus("Loaded Example Platform Scene");
+  setStatus("Loaded Snake Game Scene");
 
   try {
     sceneSummaries = await api.listScenes();
     toolbar.render();
   } catch {
-    setStatus("Loaded Example Platform Scene. Backend unavailable until save is available.");
+    setStatus("Loaded Snake Game Scene. Backend unavailable until save is available.");
   }
 }
 

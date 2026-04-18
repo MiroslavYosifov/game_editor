@@ -1,7 +1,7 @@
 import type { ObjectType, Scene, SceneSummary } from "../../shared/types";
 import { EditorState } from "../state/EditorState";
 
-const exampleSceneId = "example-platform-scene";
+const exampleSceneId = "example-snake-scene";
 
 export class Toolbar {
   constructor(
@@ -34,7 +34,7 @@ export class Toolbar {
         <label class="toolbar-field scene-load-field">
           <span>Scene</span>
           <select data-load-scene>
-            <option value="${exampleSceneId}" ${this.state.scene.id === exampleSceneId ? "selected" : ""}>Example Platform Scene</option>
+            <option value="${exampleSceneId}" ${this.state.scene.id === exampleSceneId ? "selected" : ""}>Snake Game Scene</option>
             ${this.getScenes()
               .filter((scene) => scene.id !== exampleSceneId)
               .map(
