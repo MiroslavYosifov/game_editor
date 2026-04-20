@@ -1,5 +1,6 @@
 import { createScene } from "../shared/factory";
 import "./styles.css";
+import { AssetApi } from "./api/AssetApi";
 import { SceneApi } from "./api/SceneApi";
 import { createExamplePlatformScene } from "./examples/examplePlatformScene";
 import { PointerController } from "./input/PointerController";
@@ -8,7 +9,7 @@ import { EditorState } from "./state/EditorState";
 import { HierarchyPanel } from "./ui/HierarchyPanel";
 import { InspectorPanel } from "./ui/InspectorPanel";
 import { Toolbar } from "./ui/Toolbar";
-import type { SceneSummary } from "../shared/types";
+import type { AssetSummary, SceneSummary } from "../shared/types";
 
 const log = {
   info: (message: string, data?: unknown): void => console.info(`[GameEditor] ${message}`, data ?? ""),
@@ -34,7 +35,9 @@ app.innerHTML = `
 
 const state = new EditorState();
 const api = new SceneApi();
+const assetApi = new AssetApi();
 let sceneSummaries: SceneSummary[] = [];
+let assetSummaries: AssetSummary[] = [];
 const viewport = document.querySelector<HTMLElement>("#scene-viewport");
 const toolbarRoot = document.querySelector<HTMLElement>("#toolbar");
 const hierarchyRoot = document.querySelector<HTMLElement>("#hierarchy");
@@ -54,7 +57,43 @@ const setStatus = (message: string): void => {
 };
 
 const hierarchy = new HierarchyPanel(hierarchyRoot, state);
-const inspector = new InspectorPanel(inspectorRoot, state);
+
+const refreshAssets = async (): Promise<void> => {
+  log.info("Refreshing asset list");
+  try {
+    assetSummaries = await assetApi.listAssets();
+    log.info("Asset list loaded", { count: assetSummaries.length, assets: assetSummaries });
+    inspector.render();
+  } catch (error) {
+    log.warn("Asset list unavailable", error);
+    assetSummaries = [];
+    inspector.render();
+  }
+};
+
+const uploadImageAsset = async (file: File): Promise<AssetSummary | null> => {
+  log.info("Uploading image asset", { name: file.name, type: file.type, size: file.size });
+  try {
+    const asset = await assetApi.uploadImage(file);
+    assetSummaries = [asset, ...assetSummaries.filter((item) => item.id !== asset.id)];
+    log.info("Image asset uploaded", asset);
+    setStatus(`Uploaded ${asset.name}`);
+    inspector.render();
+    return asset;
+  } catch (error) {
+    log.error("Image asset upload failed", error);
+    setStatus(error instanceof Error ? error.message : "Image upload failed");
+    return null;
+  }
+};
+
+const inspector = new InspectorPanel(
+  inspectorRoot,
+  state,
+  () => assetSummaries,
+  uploadImageAsset,
+  refreshAssets
+);
 
 const refreshScenes = async (): Promise<void> => {
   log.info("Refreshing saved scene list");
@@ -145,6 +184,7 @@ async function boot(): Promise<void> {
     log.warn("Boot scene list unavailable", error);
     setStatus("Loaded Snake Game Scene. Backend unavailable until save is available.");
   } finally {
+    void refreshAssets();
     log.info("Boot finished", { durationMs: Math.round(performance.now() - startedAt) });
   }
 }

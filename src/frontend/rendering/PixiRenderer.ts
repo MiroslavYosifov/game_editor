@@ -1,4 +1,4 @@
-import { Application, Container, Graphics, Text, TextStyle } from "pixi.js";
+import { AnimatedSprite, Application, Assets, Container, Graphics, Sprite, Text, TextStyle, Texture } from "pixi.js";
 import type { SceneObject } from "../../shared/types";
 import { EditorState } from "../state/EditorState";
 
@@ -7,11 +7,17 @@ export type SelectionControl =
 
 export type ResizeHandle = "nw" | "ne" | "sw" | "se";
 
+type LoadedSpriteAsset =
+  | { kind: "texture"; texture: Texture }
+  | { kind: "textures"; textures: Texture[] };
+
 export class PixiRenderer {
   private readonly app: Application;
   private readonly viewportBackground = new Graphics();
   private readonly world = new Container();
   private readonly handleSize = 12;
+  private readonly spriteAssets = new Map<string, LoadedSpriteAsset>();
+  private readonly spriteAssetLoads = new Map<string, Promise<void>>();
   private camera = { scale: 1, x: 0, y: 0 };
 
   constructor(
@@ -246,6 +252,10 @@ export class PixiRenderer {
       shape.drawEllipse(0, 0, object.width / 2, object.height / 2);
       shape.endFill();
       display.addChild(shape);
+    } else if (object.type === "sprite") {
+      const spriteDisplay = this.createSpriteDisplay(object);
+      if (spriteDisplay) display.addChild(spriteDisplay);
+      else display.addChild(this.createSpritePlaceholder(object));
     } else {
       shape.beginFill(this.toColorNumber(object.fill));
       shape.drawRect(-object.width / 2, -object.height / 2, object.width, object.height);
@@ -254,6 +264,108 @@ export class PixiRenderer {
     }
 
     this.world.addChild(display);
+  }
+
+  private createSpritePlaceholder(object: SceneObject): Graphics {
+    const placeholder = new Graphics();
+    const left = -object.width / 2;
+    const top = -object.height / 2;
+    const dash = 10;
+    const gap = 6;
+
+    placeholder.lineStyle(2, 0x64748b, 1);
+    this.drawDashedLine(placeholder, left, top, left + object.width, top, dash, gap);
+    this.drawDashedLine(placeholder, left + object.width, top, left + object.width, top + object.height, dash, gap);
+    this.drawDashedLine(placeholder, left + object.width, top + object.height, left, top + object.height, dash, gap);
+    this.drawDashedLine(placeholder, left, top + object.height, left, top, dash, gap);
+
+    placeholder.lineStyle(1, 0x94a3b8, 0.85);
+    this.drawDashedLine(placeholder, left, top, left + object.width, top + object.height, dash, gap);
+    this.drawDashedLine(placeholder, left + object.width, top, left, top + object.height, dash, gap);
+    return placeholder;
+  }
+
+  private drawDashedLine(graphics: Graphics, x1: number, y1: number, x2: number, y2: number, dash: number, gap: number): void {
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const length = Math.hypot(dx, dy);
+    const stepX = dx / length;
+    const stepY = dy / length;
+    let distance = 0;
+
+    while (distance < length) {
+      const start = distance;
+      const end = Math.min(distance + dash, length);
+      graphics.moveTo(x1 + stepX * start, y1 + stepY * start);
+      graphics.lineTo(x1 + stepX * end, y1 + stepY * end);
+      distance += dash + gap;
+    }
+  }
+
+  private createSpriteDisplay(object: SceneObject): Sprite | AnimatedSprite | null {
+    const sprite = object.sprite;
+    if (!sprite?.imageUrl && !sprite?.sheetUrl) return null;
+
+    const asset = this.getSpriteAsset(object);
+    if (!asset) return null;
+
+    const display =
+      asset.kind === "textures" && asset.textures.length > 0
+        ? new AnimatedSprite(asset.textures)
+        : new Sprite(asset.kind === "texture" ? asset.texture : asset.textures[0]);
+
+    display.anchor.set(0.5);
+    display.width = object.width;
+    display.height = object.height;
+
+    if (display instanceof AnimatedSprite) {
+      display.animationSpeed = sprite.animationSpeed;
+      if (sprite.playing) display.play();
+      else display.gotoAndStop(0);
+    }
+
+    return display;
+  }
+
+  private getSpriteAsset(object: SceneObject): LoadedSpriteAsset | null {
+    const sprite = object.sprite;
+    if (!sprite) return null;
+
+    const key = `${sprite.sheetUrl}|${sprite.imageUrl}|${sprite.animation}`;
+    const loaded = this.spriteAssets.get(key);
+    if (loaded) return loaded;
+
+    if (!this.spriteAssetLoads.has(key)) {
+      const load = this.loadSpriteAsset(key, sprite.sheetUrl, sprite.imageUrl, sprite.animation)
+        .catch((error) => console.warn("[GameEditor] Failed to load sprite asset", error))
+        .finally(() => this.spriteAssetLoads.delete(key));
+      this.spriteAssetLoads.set(key, load);
+    }
+
+    return null;
+  }
+
+  private async loadSpriteAsset(key: string, sheetUrl: string, imageUrl: string, animation: string): Promise<void> {
+    if (sheetUrl) {
+      const sheet = (await Assets.load(sheetUrl)) as {
+        textures?: Record<string, Texture>;
+        animations?: Record<string, Texture[]>;
+      };
+      const animationTextures = animation ? sheet.animations?.[animation] : undefined;
+      if (animationTextures?.length) this.spriteAssets.set(key, { kind: "textures", textures: animationTextures });
+      else {
+        const firstTexture = Object.values(sheet.textures ?? {})[0];
+        if (firstTexture) this.spriteAssets.set(key, { kind: "texture", texture: firstTexture });
+      }
+      this.render();
+      return;
+    }
+
+    if (imageUrl) {
+      const texture = (await Assets.load(imageUrl)) as Texture;
+      this.spriteAssets.set(key, { kind: "texture", texture });
+      this.render();
+    }
   }
 
   private drawSelection(object: SceneObject, showHandles: boolean): void {

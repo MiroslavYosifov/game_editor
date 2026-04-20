@@ -3,7 +3,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, extname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createScene } from "../shared/factory";
-import type { Scene, SceneSummary } from "../shared/types";
+import type { AssetSummary, Scene, SceneSummary } from "../shared/types";
 
 const root = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
 await loadEnvFile(join(root, ".env"));
@@ -14,6 +14,7 @@ const dataFile = join(root, "data", "scenes.json");
 const distDir = join(root, "dist");
 const supabaseUrl = process.env.SUPABASE_URL?.trim().replace(/\/$/, "");
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
+const storageBucket = process.env.SUPABASE_STORAGE_BUCKET?.trim() || "assets";
 const usingSupabase = Boolean(supabaseUrl && supabaseKey);
 
 interface SceneStore {
@@ -25,6 +26,15 @@ interface SceneRow {
   name: string;
   data: Scene;
   updated_at: string;
+}
+
+interface AssetRow {
+  id: string;
+  name: string;
+  type: "image";
+  storage_path: string;
+  metadata: Record<string, unknown> | null;
+  created_at: string;
 }
 
 const server = createServer(async (request, response) => {
@@ -47,6 +57,24 @@ async function route(request: IncomingMessage, response: ServerResponse): Promis
     sendCors(response);
     response.writeHead(204);
     response.end();
+    return;
+  }
+
+  if (url.pathname === "/api/assets" && request.method === "GET") {
+    const assets = await listAssets();
+    sendJson(response, 200, assets);
+    return;
+  }
+
+  if (url.pathname === "/api/assets/image" && request.method === "POST") {
+    const asset = await uploadImageAsset(request);
+    sendJson(response, 201, asset);
+    return;
+  }
+
+  const assetFileMatch = url.pathname.match(/^\/api\/assets\/([^/]+)\/file(?:\/.*)?$/);
+  if (assetFileMatch && request.method === "GET") {
+    await sendAssetFile(response, decodeURIComponent(assetFileMatch[1]));
     return;
   }
 
@@ -174,6 +202,105 @@ async function deleteScene(id: string): Promise<void> {
   });
 }
 
+async function listAssets(): Promise<AssetSummary[]> {
+  ensureSupabaseAssets();
+  const rows = await supabaseRequest<AssetRow[]>("/rest/v1/assets?select=id,name,type,storage_path,metadata,created_at&order=created_at.desc");
+  return rows.map(toAssetSummary);
+}
+
+async function uploadImageAsset(request: IncomingMessage): Promise<AssetSummary> {
+  ensureSupabaseAssets();
+
+  const contentType = (request.headers["content-type"] ?? "").split(";")[0].trim().toLowerCase();
+  const allowedTypes = new Set(["image/png", "image/jpeg", "image/jpg", "image/webp"]);
+  if (!allowedTypes.has(contentType)) throw new Error("Only PNG, JPG, and WebP images can be uploaded.");
+
+  const file = await readBuffer(request);
+  if (!file.length) throw new Error("Upload file is empty.");
+
+  const rawName = decodeURIComponent(String(request.headers["x-file-name"] ?? "sprite"));
+  const safeName = sanitizeFileName(rawName);
+  const storagePath = `images/${Date.now()}-${Math.random().toString(36).slice(2)}-${safeName}`;
+
+  await storageRequest(`/storage/v1/object/${storageBucket}/${encodeStoragePath(storagePath)}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": contentType,
+      "x-upsert": "false"
+    },
+    body: file.buffer.slice(file.byteOffset, file.byteOffset + file.byteLength) as ArrayBuffer
+  });
+
+  const rows = await supabaseRequest<AssetRow[]>("/rest/v1/assets", {
+    method: "POST",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify({
+      name: safeName,
+      type: "image",
+      storage_path: storagePath,
+      metadata: {
+        contentType,
+        size: file.length
+      }
+    })
+  });
+
+  const row = rows[0];
+  if (!row) throw new Error("Asset uploaded, but asset metadata was not returned.");
+  return toAssetSummary(row);
+}
+
+async function sendAssetFile(response: ServerResponse, id: string): Promise<void> {
+  ensureSupabaseAssets();
+  const rows = await supabaseRequest<AssetRow[]>(
+    `/rest/v1/assets?id=eq.${encodeURIComponent(id)}&select=id,name,type,storage_path,metadata,created_at&limit=1`
+  );
+  const row = rows[0];
+  if (!row) return sendJson(response, 404, { error: "Asset not found" });
+
+  const signedUrl = await createSignedAssetUrl(row.storage_path);
+  const assetResponse = await fetch(signedUrl);
+  if (!assetResponse.ok) {
+    const body = await assetResponse.text();
+    throw new Error(`Asset file request failed: ${assetResponse.status} ${body}`);
+  }
+
+  sendCors(response);
+  response.statusCode = 200;
+  response.setHeader("Content-Type", String(row.metadata?.contentType ?? assetResponse.headers.get("content-type") ?? "application/octet-stream"));
+  response.setHeader("Cache-Control", "private, max-age=300");
+  response.end(Buffer.from(await assetResponse.arrayBuffer()));
+}
+
+async function createSignedAssetUrl(storagePath: string): Promise<string> {
+  const result = await storageRequest<{ signedURL?: string; signedUrl?: string }>(
+    `/storage/v1/object/sign/${storageBucket}/${encodeStoragePath(storagePath)}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ expiresIn: 300 })
+    }
+  );
+  const signedPath = result.signedURL ?? result.signedUrl;
+  if (!signedPath) throw new Error("Supabase did not return a signed asset URL.");
+  return signedPath.startsWith("http") ? signedPath : `${supabaseUrl}/storage/v1${signedPath}`;
+}
+
+function toAssetSummary(row: AssetRow): AssetSummary {
+  return {
+    id: row.id,
+    name: row.name,
+    type: "image",
+    storagePath: row.storage_path,
+    url: `/api/assets/${encodeURIComponent(row.id)}/file/${encodeURIComponent(row.name)}`,
+    createdAt: row.created_at
+  };
+}
+
+function ensureSupabaseAssets(): void {
+  if (!usingSupabase) throw new Error("Asset upload requires Supabase environment variables.");
+}
+
 function toSceneSummary(scene: Scene): SceneSummary {
   return {
     id: scene.id,
@@ -205,6 +332,28 @@ async function supabaseRequest<T>(path: string, init: RequestInit = {}): Promise
   return response.json() as Promise<T>;
 }
 
+async function storageRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
+  if (!supabaseUrl || !supabaseKey) throw new Error("Supabase environment variables are missing.");
+
+  const response = await fetch(`${supabaseUrl}${path}`, {
+    ...init,
+    headers: {
+      apikey: supabaseKey,
+      ...getSupabaseAuthHeader(),
+      ...(init.headers ?? {})
+    }
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`Supabase storage request failed: ${response.status} ${body}`);
+  }
+
+  if (response.status === 204) return undefined as T;
+  const text = await response.text();
+  return (text ? JSON.parse(text) : undefined) as T;
+}
+
 function getSupabaseAuthHeader(): Record<string, string> {
   if (!supabaseKey || supabaseKey.startsWith("sb_secret_") || supabaseKey.startsWith("sb_publishable_")) return {};
   return { Authorization: `Bearer ${supabaseKey}` };
@@ -228,15 +377,19 @@ async function loadEnvFile(path: string): Promise<void> {
 }
 
 async function readJson<T>(request: IncomingMessage): Promise<T> {
+  return JSON.parse((await readBuffer(request)).toString("utf8")) as T;
+}
+
+async function readBuffer(request: IncomingMessage): Promise<Buffer> {
   const chunks: Buffer[] = [];
   for await (const chunk of request) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-  return JSON.parse(Buffer.concat(chunks).toString("utf8")) as T;
+  return Buffer.concat(chunks);
 }
 
 function sendCors(response: ServerResponse): void {
   response.setHeader("Access-Control-Allow-Origin", "*");
   response.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS");
-  response.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  response.setHeader("Access-Control-Allow-Headers", "Content-Type,X-File-Name");
 }
 
 function sendJson(response: ServerResponse, status: number, body: unknown): void {
@@ -248,6 +401,21 @@ function sendJson(response: ServerResponse, status: number, body: unknown): void
   }
   response.setHeader("Content-Type", "application/json");
   response.end(JSON.stringify(body));
+}
+
+function sanitizeFileName(value: string): string {
+  const cleaned = value
+    .trim()
+    .replace(/\\/g, "/")
+    .split("/")
+    .pop()
+    ?.replace(/[^a-zA-Z0-9._-]/g, "-")
+    .replace(/-+/g, "-");
+  return cleaned || "sprite.png";
+}
+
+function encodeStoragePath(path: string): string {
+  return path.split("/").map(encodeURIComponent).join("/");
 }
 
 async function sendStaticFile(response: ServerResponse, pathname: string): Promise<void> {

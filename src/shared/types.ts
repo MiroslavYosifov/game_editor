@@ -15,6 +15,15 @@ export interface PhysicsProperties {
   velocity: Vector2;
 }
 
+export interface SpriteProperties {
+  assetId: string;
+  imageUrl: string;
+  sheetUrl: string;
+  animation: string;
+  animationSpeed: number;
+  playing: boolean;
+}
+
 export interface SceneObject {
   id: string;
   type: ObjectType;
@@ -26,6 +35,7 @@ export interface SceneObject {
   rotation: number;
   zIndex: number;
   fill: string;
+  sprite?: SpriteProperties;
   physics: PhysicsProperties;
 }
 
@@ -43,4 +53,13 @@ export interface SceneSummary {
   name: string;
   objectCount: number;
   updatedAt: string;
+}
+
+export interface AssetSummary {
+  id: string;
+  name: string;
+  type: "image";
+  storagePath: string;
+  url: string;
+  createdAt: string;
 }

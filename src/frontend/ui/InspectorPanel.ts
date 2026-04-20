@@ -1,10 +1,13 @@
-import type { PhysicsMode, SceneObject } from "../../shared/types";
+import type { AssetSummary, PhysicsMode, SceneObject } from "../../shared/types";
 import { EditorState } from "../state/EditorState";
 
 export class InspectorPanel {
   constructor(
     private readonly root: HTMLElement,
-    private readonly state: EditorState
+    private readonly state: EditorState,
+    private readonly getAssets: () => AssetSummary[] = () => [],
+    private readonly onUploadImage: (file: File) => Promise<AssetSummary | null> = async () => null,
+    private readonly onRefreshAssets: () => Promise<void> | void = () => undefined
   ) {}
 
   render(): void {
@@ -31,6 +34,7 @@ export class InspectorPanel {
         ${this.numberField("zIndex", "Layer", object.zIndex)}
         ${this.colorField("fill", "Fill", object.fill)}
       </div>
+      ${object.type === "sprite" ? this.spriteFields(object) : ""}
       <h3>Physics</h3>
       <label class="field">
         <span>Body</span>
@@ -53,6 +57,8 @@ export class InspectorPanel {
     `;
 
     this.bindObjectInputs(object);
+    this.bindSpriteAssetInputs(object);
+    this.bindSpriteInputs(object);
     this.bindPhysicsInputs(object);
   }
 
@@ -64,6 +70,54 @@ export class InspectorPanel {
         this.state.updateObject(object.id, { [prop]: value } as Partial<SceneObject>);
       });
     });
+  }
+
+  private bindSpriteInputs(object: SceneObject): void {
+    this.root.querySelectorAll<HTMLInputElement>("[data-sprite-prop]").forEach((input) => {
+      input.addEventListener("change", () => {
+        const prop = input.dataset.spriteProp as keyof NonNullable<SceneObject["sprite"]>;
+        const current = object.sprite ?? this.defaultSprite();
+        const value = input.type === "number" ? Number(input.value) : input.type === "checkbox" ? input.checked : input.value;
+        this.state.updateObject(object.id, { sprite: { ...current, [prop]: value } });
+      });
+    });
+  }
+
+  private bindSpriteAssetInputs(object: SceneObject): void {
+    const picker = this.root.querySelector<HTMLSelectElement>("[data-sprite-asset]");
+    picker?.addEventListener("change", () => {
+      const current = object.sprite ?? this.defaultSprite();
+      const asset = this.getAssets().find((item) => item.id === picker.value);
+      this.state.updateObject(object.id, {
+        sprite: {
+          ...current,
+          assetId: asset?.id ?? "",
+          imageUrl: asset?.url ?? "",
+          sheetUrl: asset ? "" : current.sheetUrl
+        }
+      });
+    });
+
+    const fileInput = this.root.querySelector<HTMLInputElement>("[data-sprite-image-file]");
+    this.root.querySelector<HTMLButtonElement>("[data-upload-sprite-image]")?.addEventListener("click", () => fileInput?.click());
+    fileInput?.addEventListener("change", async () => {
+      const file = fileInput.files?.[0];
+      if (!file) return;
+      const asset = await this.onUploadImage(file);
+      fileInput.value = "";
+      if (!asset) return;
+      const current = object.sprite ?? this.defaultSprite();
+      this.state.updateObject(object.id, {
+        sprite: {
+          ...current,
+          assetId: asset.id,
+          imageUrl: asset.url,
+          sheetUrl: ""
+        }
+      });
+    });
+
+    this.root.querySelector<HTMLButtonElement>("[data-refresh-assets]")?.addEventListener("click", () => void this.onRefreshAssets());
   }
 
   private bindPhysicsInputs(object: SceneObject): void {
@@ -104,5 +158,58 @@ export class InspectorPanel {
 
   private colorField(prop: keyof SceneObject, label: string, value: string): string {
     return `<label class="field"><span>${label}</span><input type="color" data-object-prop="${String(prop)}" value="${value}" /></label>`;
+  }
+
+  private spriteFields(object: SceneObject): string {
+    const sprite = object.sprite ?? this.defaultSprite();
+    const assets = this.getAssets();
+    return `
+      <h3>Sprite</h3>
+      <label class="field">
+        <span>Image asset</span>
+        <select data-sprite-asset>
+          <option value="">No uploaded asset</option>
+          ${assets.map((asset) => `<option value="${this.escape(asset.id)}" ${sprite.assetId === asset.id ? "selected" : ""}>${this.escape(asset.name)}</option>`).join("")}
+        </select>
+      </label>
+      <div class="asset-actions">
+        <button type="button" data-upload-sprite-image>Upload PNG/JPG/WebP</button>
+        <button type="button" data-refresh-assets>Refresh</button>
+        <input data-sprite-image-file type="file" accept="image/png,image/jpeg,image/webp" />
+      </div>
+      <label class="field">
+        <span>Direct Image URL</span>
+        <input data-sprite-prop="imageUrl" value="${this.escape(sprite.imageUrl)}" placeholder="/api/assets/.../file or https://..." />
+      </label>
+      <label class="field">
+        <span>Spritesheet JSON URL</span>
+        <input data-sprite-prop="sheetUrl" value="${this.escape(sprite.sheetUrl)}" placeholder="https://.../spritesheet.json" />
+      </label>
+      <div class="inspector-grid">
+        <label class="field">
+          <span>Animation</span>
+          <input data-sprite-prop="animation" value="${this.escape(sprite.animation)}" placeholder="idle" />
+        </label>
+        <label class="field">
+          <span>Speed</span>
+          <input type="number" step="0.01" data-sprite-prop="animationSpeed" value="${sprite.animationSpeed}" />
+        </label>
+      </div>
+      <label class="checkbox-field">
+        <input type="checkbox" data-sprite-prop="playing" ${sprite.playing ? "checked" : ""} />
+        <span>Play animation</span>
+      </label>
+    `;
+  }
+
+  private defaultSprite(): NonNullable<SceneObject["sprite"]> {
+    return { assetId: "", imageUrl: "", sheetUrl: "", animation: "", animationSpeed: 0.12, playing: true };
+  }
+
+  private escape(value: string): string {
+    return value.replace(/[&<>"']/g, (char) => {
+      const entities: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" };
+      return entities[char];
+    });
   }
 }

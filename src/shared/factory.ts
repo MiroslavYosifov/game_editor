@@ -36,6 +36,17 @@ export function createSceneObject(type: ObjectType, index: number): SceneObject 
     rotation: 0,
     zIndex: index,
     fill: type === "circle" ? "#2f80ed" : type === "text" ? "#111827" : "#16a34a",
+    sprite:
+      type === "sprite"
+        ? {
+            assetId: "",
+            imageUrl: "",
+            sheetUrl: "",
+            animation: "",
+            animationSpeed: 0.12,
+            playing: true
+          }
+        : undefined,
     physics: defaultPhysics()
   };
 }
