@@ -5,14 +5,26 @@ import { fileURLToPath } from "node:url";
 import { createScene } from "../shared/factory";
 import type { Scene, SceneSummary } from "../shared/types";
 
+const root = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
+await loadEnvFile(join(root, ".env"));
+
 const port = Number(process.env.PORT ?? 3001);
 const host = process.env.HOST ?? "127.0.0.1";
-const root = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
 const dataFile = join(root, "data", "scenes.json");
 const distDir = join(root, "dist");
+const supabaseUrl = process.env.SUPABASE_URL?.trim().replace(/\/$/, "");
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
+const usingSupabase = Boolean(supabaseUrl && supabaseKey);
 
 interface SceneStore {
   scenes: Scene[];
+}
+
+interface SceneRow {
+  id: string;
+  name: string;
+  data: Scene;
+  updated_at: string;
 }
 
 const server = createServer(async (request, response) => {
@@ -25,6 +37,7 @@ const server = createServer(async (request, response) => {
 
 server.listen(port, host, () => {
   console.log(`Scene API running at http://${host}:${port}`);
+  console.log(usingSupabase ? "Scene storage: Supabase" : "Scene storage: local data/scenes.json");
 });
 
 async function route(request: IncomingMessage, response: ServerResponse): Promise<void> {
@@ -38,23 +51,15 @@ async function route(request: IncomingMessage, response: ServerResponse): Promis
   }
 
   if (url.pathname === "/api/scenes" && request.method === "GET") {
-    const store = await readStore();
-    const summaries: SceneSummary[] = store.scenes.map((scene) => ({
-      id: scene.id,
-      name: scene.name,
-      objectCount: scene.objects.length,
-      updatedAt: scene.updatedAt
-    }));
+    const summaries = await listScenes();
     sendJson(response, 200, summaries);
     return;
   }
 
   if (url.pathname === "/api/scenes" && request.method === "POST") {
     const scene = createScene("New Scene");
-    const store = await readStore();
-    store.scenes.unshift(scene);
-    await writeStore(store);
-    sendJson(response, 201, scene);
+    const saved = await saveScene(scene.id, scene);
+    sendJson(response, 201, saved);
     return;
   }
 
@@ -62,8 +67,7 @@ async function route(request: IncomingMessage, response: ServerResponse): Promis
   if (sceneMatch) {
     const sceneId = decodeURIComponent(sceneMatch[1]);
     if (request.method === "GET") {
-      const store = await readStore();
-      const scene = store.scenes.find((item) => item.id === sceneId);
+      const scene = await loadScene(sceneId);
       if (!scene) return sendJson(response, 404, { error: "Scene not found" });
       sendJson(response, 200, scene);
       return;
@@ -73,18 +77,13 @@ async function route(request: IncomingMessage, response: ServerResponse): Promis
       const scene = await readJson<Scene>(request);
       const now = new Date().toISOString();
       const nextScene = { ...scene, id: sceneId, updatedAt: now };
-      const store = await readStore();
-      const index = store.scenes.findIndex((item) => item.id === sceneId);
-      if (index >= 0) store.scenes[index] = nextScene;
-      else store.scenes.unshift(nextScene);
-      await writeStore(store);
-      sendJson(response, 200, nextScene);
+      const saved = await saveScene(sceneId, nextScene);
+      sendJson(response, 200, saved);
       return;
     }
 
     if (request.method === "DELETE") {
-      const store = await readStore();
-      await writeStore({ scenes: store.scenes.filter((scene) => scene.id !== sceneId) });
+      await deleteScene(sceneId);
       sendJson(response, 204, null);
       return;
     }
@@ -112,6 +111,120 @@ async function readStore(): Promise<SceneStore> {
 async function writeStore(store: SceneStore): Promise<void> {
   await mkdir(dirname(dataFile), { recursive: true });
   await writeFile(dataFile, `${JSON.stringify(store, null, 2)}\n`, "utf8");
+}
+
+async function listScenes(): Promise<SceneSummary[]> {
+  if (!usingSupabase) {
+    const store = await readStore();
+    return store.scenes.map(toSceneSummary);
+  }
+
+  const rows = await supabaseRequest<SceneRow[]>("/rest/v1/scenes?select=id,name,data,updated_at&order=updated_at.desc");
+  return rows.map((row) => ({
+    id: row.id,
+    name: row.name,
+    objectCount: row.data.objects.length,
+    updatedAt: row.updated_at
+  }));
+}
+
+async function loadScene(id: string): Promise<Scene | null> {
+  if (!usingSupabase) {
+    const store = await readStore();
+    return store.scenes.find((scene) => scene.id === id) ?? null;
+  }
+
+  const rows = await supabaseRequest<SceneRow[]>(`/rest/v1/scenes?id=eq.${encodeURIComponent(id)}&select=id,name,data,updated_at&limit=1`);
+  return rows[0]?.data ?? null;
+}
+
+async function saveScene(id: string, scene: Scene): Promise<Scene> {
+  if (!usingSupabase) {
+    const store = await readStore();
+    const index = store.scenes.findIndex((item) => item.id === id);
+    if (index >= 0) store.scenes[index] = scene;
+    else store.scenes.unshift(scene);
+    await writeStore(store);
+    return scene;
+  }
+
+  const rows = await supabaseRequest<SceneRow[]>("/rest/v1/scenes?on_conflict=id", {
+    method: "POST",
+    headers: { Prefer: "resolution=merge-duplicates,return=representation" },
+    body: JSON.stringify({
+      id,
+      name: scene.name,
+      data: scene,
+      updated_at: scene.updatedAt
+    })
+  });
+  return rows[0]?.data ?? scene;
+}
+
+async function deleteScene(id: string): Promise<void> {
+  if (!usingSupabase) {
+    const store = await readStore();
+    await writeStore({ scenes: store.scenes.filter((scene) => scene.id !== id) });
+    return;
+  }
+
+  await supabaseRequest<unknown>(`/rest/v1/scenes?id=eq.${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    headers: { Prefer: "return=minimal" }
+  });
+}
+
+function toSceneSummary(scene: Scene): SceneSummary {
+  return {
+    id: scene.id,
+    name: scene.name,
+    objectCount: scene.objects.length,
+    updatedAt: scene.updatedAt
+  };
+}
+
+async function supabaseRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
+  if (!supabaseUrl || !supabaseKey) throw new Error("Supabase environment variables are missing.");
+
+  const response = await fetch(`${supabaseUrl}${path}`, {
+    ...init,
+    headers: {
+      apikey: supabaseKey,
+      "Content-Type": "application/json",
+      ...getSupabaseAuthHeader(),
+      ...(init.headers ?? {})
+    }
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`Supabase request failed: ${response.status} ${body}`);
+  }
+
+  if (response.status === 204) return undefined as T;
+  return response.json() as Promise<T>;
+}
+
+function getSupabaseAuthHeader(): Record<string, string> {
+  if (!supabaseKey || supabaseKey.startsWith("sb_secret_") || supabaseKey.startsWith("sb_publishable_")) return {};
+  return { Authorization: `Bearer ${supabaseKey}` };
+}
+
+async function loadEnvFile(path: string): Promise<void> {
+  try {
+    const raw = await readFile(path, "utf8");
+    for (const line of raw.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#")) continue;
+      const separator = trimmed.indexOf("=");
+      if (separator <= 0) continue;
+      const key = trimmed.slice(0, separator).trim();
+      const value = trimmed.slice(separator + 1).trim().replace(/^["']|["']$/g, "");
+      process.env[key] ??= value;
+    }
+  } catch {
+    // Render and other hosts provide environment variables directly.
+  }
 }
 
 async function readJson<T>(request: IncomingMessage): Promise<T> {

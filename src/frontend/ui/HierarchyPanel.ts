@@ -33,7 +33,7 @@ export class HierarchyPanel {
     `;
 
     this.root.querySelector<HTMLInputElement>("[data-scene-name]")?.addEventListener("input", (event) => {
-      this.state.setSceneName((event.target as HTMLInputElement).value);
+      this.state.previewSceneName((event.target as HTMLInputElement).value);
     });
 
     this.root.querySelectorAll<HTMLButtonElement>("[data-object-id]").forEach((button) => {

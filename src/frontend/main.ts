@@ -119,7 +119,7 @@ const toolbar = new Toolbar(
 
 state.subscribe(() => {
   if (!toolbarRoot.querySelector("[data-grid-size]:focus")) toolbar.render();
-  hierarchy.render();
+  if (!hierarchyRoot.querySelector("[data-scene-name]:focus")) hierarchy.render();
   inspector.render();
   renderer.render();
 });

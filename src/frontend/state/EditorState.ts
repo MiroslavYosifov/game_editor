@@ -51,6 +51,11 @@ export class EditorState {
     this.emit();
   }
 
+  previewSceneName(name: string): void {
+    this.scene = { ...this.scene, name, updatedAt: new Date().toISOString() };
+    this.emit();
+  }
+
   setGridSize(size: number): void {
     this.recordHistory();
     this.gridSize = Math.max(4, Math.min(256, Math.round(size)));
