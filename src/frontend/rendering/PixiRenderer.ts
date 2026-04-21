@@ -1,4 +1,4 @@
-import { AnimatedSprite, Application, Assets, Container, Graphics, Sprite, Text, TextStyle, Texture } from "pixi.js";
+import { AnimatedSprite, Application, Assets, Container, Graphics, Rectangle, Sprite, Text, TextStyle, Texture } from "pixi.js";
 import type { SceneObject } from "../../shared/types";
 import { EditorState } from "../state/EditorState";
 
@@ -10,6 +10,14 @@ export type ResizeHandle = "nw" | "ne" | "sw" | "se";
 type LoadedSpriteAsset =
   | { kind: "texture"; texture: Texture }
   | { kind: "textures"; textures: Texture[] };
+
+interface TexturePackerFrame {
+  frame: { x: number; y: number; w: number; h: number };
+}
+
+interface TexturePackerSheet {
+  frames: Record<string, TexturePackerFrame> | Array<TexturePackerFrame & { filename: string }>;
+}
 
 export class PixiRenderer {
   private readonly app: Application;
@@ -347,16 +355,16 @@ export class PixiRenderer {
 
   private async loadSpriteAsset(key: string, sheetUrl: string, imageUrl: string, animation: string): Promise<void> {
     if (sheetUrl) {
-      const sheet = (await Assets.load(sheetUrl)) as {
-        textures?: Record<string, Texture>;
-        animations?: Record<string, Texture[]>;
-      };
-      const animationTextures = animation ? sheet.animations?.[animation] : undefined;
-      if (animationTextures?.length) this.spriteAssets.set(key, { kind: "textures", textures: animationTextures });
-      else {
-        const firstTexture = Object.values(sheet.textures ?? {})[0];
-        if (firstTexture) this.spriteAssets.set(key, { kind: "texture", texture: firstTexture });
-      }
+      const [sheet, baseTexture] = await Promise.all([
+        fetch(sheetUrl).then((response) => {
+          if (!response.ok) throw new Error(`Spritesheet JSON failed: ${response.status}`);
+          return response.json() as Promise<TexturePackerSheet>;
+        }),
+        imageUrl ? (Assets.load(imageUrl) as Promise<Texture>) : Promise.reject(new Error("Spritesheet image URL is missing."))
+      ]);
+      const textures = this.createSpritesheetTextures(sheet, baseTexture, animation);
+      if (textures.length > 1) this.spriteAssets.set(key, { kind: "textures", textures });
+      else if (textures[0]) this.spriteAssets.set(key, { kind: "texture", texture: textures[0] });
       this.render();
       return;
     }
@@ -366,6 +374,21 @@ export class PixiRenderer {
       this.spriteAssets.set(key, { kind: "texture", texture });
       this.render();
     }
+  }
+
+  private createSpritesheetTextures(sheet: TexturePackerSheet, baseTexture: Texture, animation: string): Texture[] {
+    const entries = Array.isArray(sheet.frames)
+      ? sheet.frames.map((frame) => [frame.filename, frame] as const)
+      : Object.entries(sheet.frames ?? {});
+    const filtered = animation ? entries.filter(([name]) => name.toLowerCase().includes(animation.toLowerCase())) : entries;
+    const selected = filtered.length ? filtered : entries;
+
+    return selected
+      .filter(([, item]) => Boolean(item?.frame))
+      .map(([, item]) => {
+        const frame = item.frame;
+        return new Texture(baseTexture.baseTexture, new Rectangle(frame.x, frame.y, frame.w, frame.h));
+      });
   }
 
   private drawSelection(object: SceneObject, showHandles: boolean): void {

@@ -87,11 +87,28 @@ const uploadImageAsset = async (file: File): Promise<AssetSummary | null> => {
   }
 };
 
+const uploadSpritesheetAsset = async (image: File, json: File): Promise<AssetSummary | null> => {
+  log.info("Uploading spritesheet asset", { image: image.name, json: json.name, size: image.size });
+  try {
+    const asset = await assetApi.uploadSpritesheet(image, json);
+    assetSummaries = [asset, ...assetSummaries.filter((item) => item.id !== asset.id)];
+    log.info("Spritesheet asset uploaded", asset);
+    setStatus(`Uploaded spritesheet ${asset.name}`);
+    inspector.render();
+    return asset;
+  } catch (error) {
+    log.error("Spritesheet upload failed", error);
+    setStatus(error instanceof Error ? error.message : "Spritesheet upload failed");
+    return null;
+  }
+};
+
 const inspector = new InspectorPanel(
   inspectorRoot,
   state,
   () => assetSummaries,
   uploadImageAsset,
+  uploadSpritesheetAsset,
   refreshAssets
 );
 

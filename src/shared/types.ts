@@ -58,8 +58,10 @@ export interface SceneSummary {
 export interface AssetSummary {
   id: string;
   name: string;
-  type: "image";
+  type: "image" | "spritesheet";
   storagePath: string;
   url: string;
+  sheetUrl?: string;
+  frameNames?: string[];
   createdAt: string;
 }

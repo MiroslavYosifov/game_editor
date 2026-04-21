@@ -7,6 +7,7 @@ export class InspectorPanel {
     private readonly state: EditorState,
     private readonly getAssets: () => AssetSummary[] = () => [],
     private readonly onUploadImage: (file: File) => Promise<AssetSummary | null> = async () => null,
+    private readonly onUploadSpritesheet: (image: File, json: File) => Promise<AssetSummary | null> = async () => null,
     private readonly onRefreshAssets: () => Promise<void> | void = () => undefined
   ) {}
 
@@ -86,16 +87,26 @@ export class InspectorPanel {
   private bindSpriteAssetInputs(object: SceneObject): void {
     const picker = this.root.querySelector<HTMLSelectElement>("[data-sprite-asset]");
     picker?.addEventListener("change", () => {
-      const current = object.sprite ?? this.defaultSprite();
       const asset = this.getAssets().find((item) => item.id === picker.value);
-      this.state.updateObject(object.id, {
-        sprite: {
-          ...current,
-          assetId: asset?.id ?? "",
-          imageUrl: asset?.url ?? "",
-          sheetUrl: asset ? "" : current.sheetUrl
-        }
+      this.attachAsset(object, asset);
+    });
+
+    this.root.querySelectorAll<HTMLButtonElement>("[data-asset-pick]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const asset = this.getAssets().find((item) => item.id === button.dataset.assetPick);
+        this.attachAsset(object, asset);
       });
+    });
+
+    const setUploadMode = (mode: string): void => {
+      this.root.querySelectorAll<HTMLElement>("[data-upload-panel]").forEach((panel) => {
+        panel.hidden = panel.dataset.uploadPanel !== mode;
+      });
+    };
+    const checkedMode = this.root.querySelector<HTMLInputElement>("[data-upload-mode]:checked")?.value ?? "image";
+    setUploadMode(checkedMode);
+    this.root.querySelectorAll<HTMLInputElement>("[data-upload-mode]").forEach((input) => {
+      input.addEventListener("change", () => setUploadMode(input.value));
     });
 
     const fileInput = this.root.querySelector<HTMLInputElement>("[data-sprite-image-file]");
@@ -117,7 +128,42 @@ export class InspectorPanel {
       });
     });
 
+    const sheetImageInput = this.root.querySelector<HTMLInputElement>("[data-sprite-sheet-image-file]");
+    const sheetJsonInput = this.root.querySelector<HTMLInputElement>("[data-sprite-sheet-json-file]");
+    this.root.querySelector<HTMLButtonElement>("[data-upload-sprite-sheet]")?.addEventListener("click", async () => {
+      const image = sheetImageInput?.files?.[0];
+      const json = sheetJsonInput?.files?.[0];
+      if (!image || !json) return;
+      const asset = await this.onUploadSpritesheet(image, json);
+      if (sheetImageInput) sheetImageInput.value = "";
+      if (sheetJsonInput) sheetJsonInput.value = "";
+      if (!asset) return;
+      const current = object.sprite ?? this.defaultSprite();
+      this.state.updateObject(object.id, {
+        sprite: {
+          ...current,
+          assetId: asset.id,
+          imageUrl: asset.url,
+          sheetUrl: asset.sheetUrl ?? "",
+          animation: ""
+        }
+      });
+    });
+
     this.root.querySelector<HTMLButtonElement>("[data-refresh-assets]")?.addEventListener("click", () => void this.onRefreshAssets());
+  }
+
+  private attachAsset(object: SceneObject, asset: AssetSummary | undefined): void {
+    const current = object.sprite ?? this.defaultSprite();
+    this.state.updateObject(object.id, {
+      sprite: {
+        ...current,
+        assetId: asset?.id ?? "",
+        imageUrl: asset?.url ?? "",
+        sheetUrl: asset?.sheetUrl ?? "",
+        animation: asset?.type === "spritesheet" ? current.animation : ""
+      }
+    });
   }
 
   private bindPhysicsInputs(object: SceneObject): void {
@@ -163,28 +209,42 @@ export class InspectorPanel {
   private spriteFields(object: SceneObject): string {
     const sprite = object.sprite ?? this.defaultSprite();
     const assets = this.getAssets();
+    const selectedAsset = assets.find((asset) => asset.id === sprite.assetId);
     return `
       <h3>Sprite</h3>
-      <label class="field">
-        <span>Image asset</span>
-        <select data-sprite-asset>
-          <option value="">No uploaded asset</option>
-          ${assets.map((asset) => `<option value="${this.escape(asset.id)}" ${sprite.assetId === asset.id ? "selected" : ""}>${this.escape(asset.name)}</option>`).join("")}
-        </select>
-      </label>
-      <div class="asset-actions">
-        <button type="button" data-upload-sprite-image>Upload PNG/JPG/WebP</button>
-        <button type="button" data-refresh-assets>Refresh</button>
-        <input data-sprite-image-file type="file" accept="image/png,image/jpeg,image/webp" />
+      <div class="asset-select-row">
+        <label class="field">
+          <span>Image asset</span>
+          <select data-sprite-asset>
+            <option value="">No uploaded asset</option>
+            ${assets.map((asset) => `<option value="${this.escape(asset.id)}" ${sprite.assetId === asset.id ? "selected" : ""}>${this.escape(asset.name)} (${asset.type})</option>`).join("")}
+          </select>
+        </label>
+        <button type="button" class="asset-refresh" data-refresh-assets title="Refresh assets" aria-label="Refresh assets">Refresh</button>
       </div>
-      <label class="field">
-        <span>Direct Image URL</span>
-        <input data-sprite-prop="imageUrl" value="${this.escape(sprite.imageUrl)}" placeholder="/api/assets/.../file or https://..." />
-      </label>
-      <label class="field">
-        <span>Spritesheet JSON URL</span>
-        <input data-sprite-prop="sheetUrl" value="${this.escape(sprite.sheetUrl)}" placeholder="https://.../spritesheet.json" />
-      </label>
+      ${this.assetBrowser(assets, selectedAsset)}
+      <div class="upload-mode">
+        <label><input type="radio" name="sprite-upload-mode" data-upload-mode value="image" checked /> Single image</label>
+        <label><input type="radio" name="sprite-upload-mode" data-upload-mode value="sheet" /> Spritesheet + JSON</label>
+      </div>
+      <div data-upload-panel="image">
+        <div class="asset-actions">
+          <button type="button" data-upload-sprite-image>Upload PNG/JPG/WebP</button>
+          <input data-sprite-image-file type="file" accept="image/png,image/jpeg,image/webp" />
+        </div>
+      </div>
+      <div class="sheet-upload" data-upload-panel="sheet" hidden>
+        <strong>Spritesheet upload</strong>
+        <label class="field">
+          <span>Image PNG/JPG/WebP</span>
+          <input data-sprite-sheet-image-file type="file" accept="image/png,image/jpeg,image/webp" />
+        </label>
+        <label class="field">
+          <span>JSON file</span>
+          <input data-sprite-sheet-json-file type="file" accept="application/json,.json" />
+        </label>
+        <button type="button" data-upload-sprite-sheet>Upload selected sheet</button>
+      </div>
       <div class="inspector-grid">
         <label class="field">
           <span>Animation</span>
@@ -199,6 +259,25 @@ export class InspectorPanel {
         <input type="checkbox" data-sprite-prop="playing" ${sprite.playing ? "checked" : ""} />
         <span>Play animation</span>
       </label>
+    `;
+  }
+
+  private assetBrowser(assets: AssetSummary[], selectedAsset: AssetSummary | undefined): string {
+    if (!assets.length) return `<p class="empty">No uploaded sprite assets yet.</p>`;
+    return `
+      <div class="asset-browser">
+        ${assets
+          .map(
+            (asset) => `
+              <button type="button" class="asset-card ${selectedAsset?.id === asset.id ? "selected" : ""}" data-asset-pick="${this.escape(asset.id)}">
+                <img src="${this.escape(asset.url)}" alt="" />
+                <span>${this.escape(asset.name)}</span>
+                <small>${asset.type === "spritesheet" ? `${asset.frameNames?.length ?? 0} frames` : "image"}</small>
+              </button>
+            `
+          )
+          .join("")}
+      </div>
     `;
   }
 

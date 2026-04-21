@@ -31,7 +31,7 @@ interface SceneRow {
 interface AssetRow {
   id: string;
   name: string;
-  type: "image";
+  type: "image" | "spritesheet";
   storage_path: string;
   metadata: Record<string, unknown> | null;
   created_at: string;
@@ -72,9 +72,21 @@ async function route(request: IncomingMessage, response: ServerResponse): Promis
     return;
   }
 
+  if (url.pathname === "/api/assets/spritesheet" && request.method === "POST") {
+    const asset = await uploadSpritesheetAsset(request);
+    sendJson(response, 201, asset);
+    return;
+  }
+
   const assetFileMatch = url.pathname.match(/^\/api\/assets\/([^/]+)\/file(?:\/.*)?$/);
   if (assetFileMatch && request.method === "GET") {
     await sendAssetFile(response, decodeURIComponent(assetFileMatch[1]));
+    return;
+  }
+
+  const assetSheetMatch = url.pathname.match(/^\/api\/assets\/([^/]+)\/sheet(?:\/.*)?$/);
+  if (assetSheetMatch && request.method === "GET") {
+    await sendAssetSheet(response, decodeURIComponent(assetSheetMatch[1]));
     return;
   }
 
@@ -222,14 +234,7 @@ async function uploadImageAsset(request: IncomingMessage): Promise<AssetSummary>
   const safeName = sanitizeFileName(rawName);
   const storagePath = `images/${Date.now()}-${Math.random().toString(36).slice(2)}-${safeName}`;
 
-  await storageRequest(`/storage/v1/object/${storageBucket}/${encodeStoragePath(storagePath)}`, {
-    method: "POST",
-    headers: {
-      "Content-Type": contentType,
-      "x-upsert": "false"
-    },
-    body: file.buffer.slice(file.byteOffset, file.byteOffset + file.byteLength) as ArrayBuffer
-  });
+  await uploadStorageObject(storagePath, contentType, file);
 
   const rows = await supabaseRequest<AssetRow[]>("/rest/v1/assets", {
     method: "POST",
@@ -272,6 +277,82 @@ async function sendAssetFile(response: ServerResponse, id: string): Promise<void
   response.end(Buffer.from(await assetResponse.arrayBuffer()));
 }
 
+async function sendAssetSheet(response: ServerResponse, id: string): Promise<void> {
+  ensureSupabaseAssets();
+  const rows = await supabaseRequest<AssetRow[]>(
+    `/rest/v1/assets?id=eq.${encodeURIComponent(id)}&select=id,name,type,storage_path,metadata,created_at&limit=1`
+  );
+  const row = rows[0];
+  if (!row || row.type !== "spritesheet") return sendJson(response, 404, { error: "Spritesheet not found" });
+
+  const sheetStoragePath = typeof row.metadata?.sheetStoragePath === "string" ? row.metadata.sheetStoragePath : "";
+  if (!sheetStoragePath) return sendJson(response, 404, { error: "Spritesheet JSON not found" });
+
+  const signedUrl = await createSignedAssetUrl(sheetStoragePath);
+  const sheetResponse = await fetch(signedUrl);
+  if (!sheetResponse.ok) {
+    const body = await sheetResponse.text();
+    throw new Error(`Spritesheet JSON request failed: ${sheetResponse.status} ${body}`);
+  }
+
+  sendCors(response);
+  response.statusCode = 200;
+  response.setHeader("Content-Type", "application/json; charset=utf-8");
+  response.setHeader("Cache-Control", "private, max-age=300");
+  response.end(await sheetResponse.text());
+}
+
+async function uploadSpritesheetAsset(request: IncomingMessage): Promise<AssetSummary> {
+  ensureSupabaseAssets();
+
+  const payload = await readJson<{
+    name: string;
+    imageFileName: string;
+    imageContentType: string;
+    imageBase64: string;
+    jsonFileName: string;
+    jsonText: string;
+  }>(request);
+
+  const imageContentType = payload.imageContentType.trim().toLowerCase();
+  const allowedTypes = new Set(["image/png", "image/jpeg", "image/jpg", "image/webp"]);
+  if (!allowedTypes.has(imageContentType)) throw new Error("Spritesheet image must be PNG, JPG, or WebP.");
+
+  const sheetData = parseSpritesheetJson(payload.jsonText);
+  const imageFileName = sanitizeFileName(payload.imageFileName);
+  const jsonFileName = sanitizeFileName(payload.jsonFileName || "spritesheet.json");
+  const folder = `spritesheets/${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const imagePath = `${folder}/${imageFileName}`;
+  const jsonPath = `${folder}/${jsonFileName}`;
+  const imageBuffer = Buffer.from(payload.imageBase64, "base64");
+
+  if (!imageBuffer.length) throw new Error("Spritesheet image file is empty.");
+
+  await uploadStorageObject(imagePath, imageContentType, imageBuffer);
+  await uploadStorageObject(jsonPath, "application/json", Buffer.from(JSON.stringify(sheetData.json), "utf8"));
+
+  const rows = await supabaseRequest<AssetRow[]>("/rest/v1/assets", {
+    method: "POST",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify({
+      name: sanitizeFileName(payload.name || imageFileName),
+      type: "spritesheet",
+      storage_path: imagePath,
+      metadata: {
+        contentType: imageContentType,
+        size: imageBuffer.length,
+        sheetStoragePath: jsonPath,
+        sheetFileName: jsonFileName,
+        frameNames: sheetData.frameNames
+      }
+    })
+  });
+
+  const row = rows[0];
+  if (!row) throw new Error("Spritesheet uploaded, but asset metadata was not returned.");
+  return toAssetSummary(row);
+}
+
 async function createSignedAssetUrl(storagePath: string): Promise<string> {
   const result = await storageRequest<{ signedURL?: string; signedUrl?: string }>(
     `/storage/v1/object/sign/${storageBucket}/${encodeStoragePath(storagePath)}`,
@@ -286,13 +367,42 @@ async function createSignedAssetUrl(storagePath: string): Promise<string> {
   return signedPath.startsWith("http") ? signedPath : `${supabaseUrl}/storage/v1${signedPath}`;
 }
 
+async function uploadStorageObject(storagePath: string, contentType: string, file: Buffer): Promise<void> {
+  await storageRequest(`/storage/v1/object/${storageBucket}/${encodeStoragePath(storagePath)}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": contentType,
+      "x-upsert": "false"
+    },
+    body: file.buffer.slice(file.byteOffset, file.byteOffset + file.byteLength) as ArrayBuffer
+  });
+}
+
+function parseSpritesheetJson(raw: string): { json: unknown; frameNames: string[] } {
+  const parsed = JSON.parse(raw) as { frames?: unknown };
+  if (!parsed.frames || typeof parsed.frames !== "object") throw new Error("Spritesheet JSON must include a frames object.");
+
+  const frameNames = Array.isArray(parsed.frames)
+    ? parsed.frames
+        .map((frame) => (frame && typeof frame === "object" && "filename" in frame ? String((frame as { filename: unknown }).filename) : ""))
+        .filter(Boolean)
+    : Object.keys(parsed.frames);
+
+  if (!frameNames.length) throw new Error("Spritesheet JSON does not contain any frames.");
+  return { json: parsed, frameNames };
+}
+
 function toAssetSummary(row: AssetRow): AssetSummary {
+  const sheetFileName = typeof row.metadata?.sheetFileName === "string" ? row.metadata.sheetFileName : "spritesheet.json";
+  const frameNames = Array.isArray(row.metadata?.frameNames) ? row.metadata.frameNames.filter((item): item is string => typeof item === "string") : undefined;
   return {
     id: row.id,
     name: row.name,
-    type: "image",
+    type: row.type,
     storagePath: row.storage_path,
     url: `/api/assets/${encodeURIComponent(row.id)}/file/${encodeURIComponent(row.name)}`,
+    sheetUrl: row.type === "spritesheet" ? `/api/assets/${encodeURIComponent(row.id)}/sheet/${encodeURIComponent(sheetFileName)}` : undefined,
+    frameNames,
     createdAt: row.created_at
   };
 }

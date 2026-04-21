@@ -312,12 +312,131 @@ h3 {
 .asset-actions {
   display: grid;
   gap: 8px;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: 1fr;
   margin-bottom: 12px;
 }
 
 .asset-actions input[type="file"] {
   display: none;
+}
+
+.asset-select-row {
+  align-items: end;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  margin-bottom: 12px;
+}
+
+.asset-select-row .field {
+  margin-bottom: 0;
+}
+
+.asset-refresh {
+  font-size: 11px;
+  height: 37px;
+  margin-bottom: 0;
+  padding: 0 8px;
+  text-transform: uppercase;
+}
+
+.upload-mode {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 1fr 1fr;
+  margin: 12px 0;
+}
+
+.upload-mode label {
+  align-items: center;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  color: #334155;
+  display: flex;
+  font-size: 13px;
+  gap: 6px;
+  padding: 8px;
+}
+
+.asset-browser {
+  display: grid;
+  gap: 6px;
+  max-height: 190px;
+  margin-bottom: 12px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.asset-card {
+  align-items: center;
+  display: grid;
+  gap: 6px;
+  grid-template-columns: 42px minmax(0, 1fr);
+  padding: 6px;
+  text-align: left;
+}
+
+.asset-card img {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  height: 42px;
+  object-fit: contain;
+  width: 42px;
+}
+
+.asset-card span {
+  color: #111827;
+  font-size: 12px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.asset-card small {
+  color: #64748b;
+  font-size: 11px;
+  grid-column: 2;
+  margin-top: -5px;
+}
+
+.asset-card.selected,
+.asset-card:hover {
+  background: #111827;
+  border-color: #111827;
+}
+
+.asset-card.selected span,
+.asset-card:hover span {
+  color: #ffffff;
+}
+
+.asset-card.selected small,
+.asset-card:hover small {
+  color: #d8e0ea;
+}
+
+.sheet-upload {
+  border: 1px dashed #94a3b8;
+  border-radius: 6px;
+  display: grid;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 10px;
+}
+
+[data-upload-panel][hidden] {
+  display: none;
+}
+
+.sheet-upload strong {
+  color: #334155;
+  font-size: 13px;
+}
+
+.sheet-upload .field {
+  margin-bottom: 0;
 }
 
 .empty {
