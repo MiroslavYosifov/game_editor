@@ -38,6 +38,8 @@ const api = new SceneApi();
 const assetApi = new AssetApi();
 let sceneSummaries: SceneSummary[] = [];
 let assetSummaries: AssetSummary[] = [];
+let imageUploadInProgress = false;
+let spritesheetUploadInProgress = false;
 const viewport = document.querySelector<HTMLElement>("#scene-viewport");
 const toolbarRoot = document.querySelector<HTMLElement>("#toolbar");
 const hierarchyRoot = document.querySelector<HTMLElement>("#hierarchy");
@@ -58,10 +60,13 @@ const setStatus = (message: string): void => {
 
 const hierarchy = new HierarchyPanel(hierarchyRoot, state);
 
+const getPreferredHeroAsset = (): AssetSummary | undefined =>
+  assetSummaries.find((asset) => asset.type === "spritesheet") ?? assetSummaries.find((asset) => asset.type === "image");
+
 const refreshAssets = async (): Promise<void> => {
   log.info("Refreshing asset list");
   try {
-    assetSummaries = await assetApi.listAssets();
+    assetSummaries = dedupeAssets(await assetApi.listAssets());
     log.info("Asset list loaded", { count: assetSummaries.length, assets: assetSummaries });
     inspector.render();
   } catch (error) {
@@ -72,10 +77,12 @@ const refreshAssets = async (): Promise<void> => {
 };
 
 const uploadImageAsset = async (file: File): Promise<AssetSummary | null> => {
+  if (imageUploadInProgress) return null;
+  imageUploadInProgress = true;
   log.info("Uploading image asset", { name: file.name, type: file.type, size: file.size });
   try {
     const asset = await assetApi.uploadImage(file);
-    assetSummaries = [asset, ...assetSummaries.filter((item) => item.id !== asset.id)];
+    assetSummaries = dedupeAssets([asset, ...assetSummaries]);
     log.info("Image asset uploaded", asset);
     setStatus(`Uploaded ${asset.name}`);
     inspector.render();
@@ -84,14 +91,18 @@ const uploadImageAsset = async (file: File): Promise<AssetSummary | null> => {
     log.error("Image asset upload failed", error);
     setStatus(error instanceof Error ? error.message : "Image upload failed");
     return null;
+  } finally {
+    imageUploadInProgress = false;
   }
 };
 
 const uploadSpritesheetAsset = async (image: File, json: File): Promise<AssetSummary | null> => {
+  if (spritesheetUploadInProgress) return null;
+  spritesheetUploadInProgress = true;
   log.info("Uploading spritesheet asset", { image: image.name, json: json.name, size: image.size });
   try {
     const asset = await assetApi.uploadSpritesheet(image, json);
-    assetSummaries = [asset, ...assetSummaries.filter((item) => item.id !== asset.id)];
+    assetSummaries = dedupeAssets([asset, ...assetSummaries]);
     log.info("Spritesheet asset uploaded", asset);
     setStatus(`Uploaded spritesheet ${asset.name}`);
     inspector.render();
@@ -100,7 +111,19 @@ const uploadSpritesheetAsset = async (image: File, json: File): Promise<AssetSum
     log.error("Spritesheet upload failed", error);
     setStatus(error instanceof Error ? error.message : "Spritesheet upload failed");
     return null;
+  } finally {
+    spritesheetUploadInProgress = false;
   }
+};
+
+const dedupeAssets = (assets: AssetSummary[]): AssetSummary[] => {
+  const seen = new Set<string>();
+  return assets.filter((asset) => {
+    const key = `${asset.type}|${asset.name}|${asset.frameNames?.length ?? 0}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 };
 
 const inspector = new InspectorPanel(
@@ -131,9 +154,9 @@ const loadScene = async (sceneId: string): Promise<void> => {
   log.info("Loading scene", { sceneId });
   try {
     if (sceneId === "example-snake-scene") {
-      state.setScene(createExamplePlatformScene());
-      log.info("Built-in Snake scene loaded");
-      setStatus("Loaded Snake Game Scene");
+      state.setScene(createExamplePlatformScene(getPreferredHeroAsset()));
+      log.info("Built-in Sprite Maze scene loaded");
+      setStatus("Loaded Sprite Maze Scene");
       return;
     }
 
@@ -174,7 +197,7 @@ const toolbar = new Toolbar(
 );
 
 state.subscribe(() => {
-  if (!toolbarRoot.querySelector("[data-grid-size]:focus")) toolbar.render();
+  if (!toolbarRoot.querySelector("[data-grid-size]:focus, [data-scene-width]:focus, [data-scene-height]:focus")) toolbar.render();
   if (!hierarchyRoot.querySelector("[data-scene-name]:focus")) hierarchy.render();
   inspector.render();
   renderer.render();
@@ -188,9 +211,18 @@ async function boot(): Promise<void> {
   inspector.render();
   renderer.render();
 
-  state.setScene(createExamplePlatformScene());
-  log.info("Default Snake scene loaded");
-  setStatus("Loaded Snake Game Scene");
+  try {
+    log.info("Loading asset list during boot");
+    assetSummaries = dedupeAssets(await assetApi.listAssets());
+    log.info("Boot asset list loaded", { count: assetSummaries.length });
+  } catch (error) {
+    log.warn("Boot asset list unavailable", error);
+    assetSummaries = [];
+  }
+
+  state.setScene(createExamplePlatformScene(getPreferredHeroAsset()));
+  log.info("Default Sprite Maze scene loaded");
+  setStatus("Loaded Sprite Maze Scene");
 
   try {
     log.info("Loading saved scenes during boot");
@@ -199,9 +231,8 @@ async function boot(): Promise<void> {
     toolbar.render();
   } catch (error) {
     log.warn("Boot scene list unavailable", error);
-    setStatus("Loaded Snake Game Scene. Backend unavailable until save is available.");
+    setStatus("Loaded Sprite Maze Scene. Backend unavailable until save is available.");
   } finally {
-    void refreshAssets();
     log.info("Boot finished", { durationMs: Math.round(performance.now() - startedAt) });
   }
 }

@@ -15,49 +15,71 @@ export class Toolbar {
   ) {}
 
   render(): void {
-    const objectTypes: ObjectType[] = ["rectangle", "circle", "sprite", "text"];
+    const objectTypes: Array<{ type: ObjectType; label: string }> = [
+      { type: "rectangle", label: "Rect" },
+      { type: "circle", label: "Circle" },
+      { type: "sprite", label: "Sprite" },
+      { type: "text", label: "Text" }
+    ];
     this.root.innerHTML = `
-      <div class="toolbar-group">
-        ${objectTypes.map((type) => `<button class="toolbar-btn" data-add="${type}">Add ${type}</button>`).join("")}
+      <div class="toolbar-row toolbar-main-row">
+        <div class="toolbar-group load-controls">
+          <label class="toolbar-field scene-load-field">
+            <span>Scene</span>
+            <select data-load-scene>
+              <option value="${exampleSceneId}" ${this.state.scene.id === exampleSceneId ? "selected" : ""}>Sprite Maze Scene</option>
+              ${this.getScenes()
+                .filter((scene) => scene.id !== exampleSceneId)
+                .map(
+                  (scene) => `
+                    <option value="${scene.id}" ${this.state.scene.id === scene.id ? "selected" : ""}>
+                      ${this.escape(scene.name)} (${scene.objectCount})
+                    </option>
+                  `
+                )
+                .join("")}
+            </select>
+          </label>
+          <button class="toolbar-btn" data-action="load-scene">Load</button>
+          <button class="toolbar-btn" data-action="refresh-scenes">Refresh</button>
+        </div>
+        <div class="toolbar-group">
+          <button class="toolbar-btn btn-undo" data-action="undo" ${this.state.canUndo ? "" : "disabled"}>Undo</button>
+          <button class="toolbar-btn btn-redo" data-action="redo" ${this.state.canRedo ? "" : "disabled"}>Redo</button>
+          <button class="toolbar-btn btn-new" data-action="new">New</button>
+          <button class="toolbar-btn btn-save" data-action="save">Save</button>
+          <button class="toolbar-btn btn-primary" data-action="import">Import JSON</button>
+          <button class="toolbar-btn btn-secondary" data-action="export">Export JSON</button>
+          <input data-import-file type="file" accept="application/json,.json" hidden />
+        </div>
       </div>
-      <div class="toolbar-group grid-controls">
-        <label class="toolbar-check">
-          <input data-snap-toggle type="checkbox" ${this.state.snapToGrid ? "checked" : ""} />
-          <span>Snap</span>
-        </label>
-        <label class="toolbar-field">
-          <span>Grid</span>
-          <input data-grid-size type="number" min="4" max="256" step="4" value="${this.state.gridSize}" />
-        </label>
-      </div>
-      <div class="toolbar-group load-controls">
-        <label class="toolbar-field scene-load-field">
-          <span>Scene</span>
-          <select data-load-scene>
-            <option value="${exampleSceneId}" ${this.state.scene.id === exampleSceneId ? "selected" : ""}>Snake Game Scene</option>
-            ${this.getScenes()
-              .filter((scene) => scene.id !== exampleSceneId)
-              .map(
-                (scene) => `
-                  <option value="${scene.id}" ${this.state.scene.id === scene.id ? "selected" : ""}>
-                    ${this.escape(scene.name)} (${scene.objectCount})
-                  </option>
-                `
-              )
-              .join("")}
-          </select>
-        </label>
-        <button class="toolbar-btn" data-action="load-scene">Load</button>
-        <button class="toolbar-btn" data-action="refresh-scenes">Refresh</button>
-      </div>
-      <div class="toolbar-group">
-        <button class="toolbar-btn btn-undo" data-action="undo" ${this.state.canUndo ? "" : "disabled"}>Undo</button>
-        <button class="toolbar-btn btn-redo" data-action="redo" ${this.state.canRedo ? "" : "disabled"}>Redo</button>
-        <button class="toolbar-btn btn-new" data-action="new">New</button>
-        <button class="toolbar-btn btn-save" data-action="save">Save</button>
-        <button class="toolbar-btn btn-primary" data-action="import">Import JSON</button>
-        <button class="toolbar-btn btn-secondary" data-action="export">Export JSON</button>
-        <input data-import-file type="file" accept="application/json,.json" hidden />
+      <div class="toolbar-row toolbar-sub-row">
+        <div class="toolbar-group compact-tools">
+          <span class="tool-strip-label">Add</span>
+          ${objectTypes.map((item) => `<button class="toolbar-btn compact-tool-btn" data-add="${item.type}">${item.label}</button>`).join("")}
+        </div>
+        <div class="toolbar-group grid-controls compact-grid-controls">
+          <span class="tool-strip-label">Grid</span>
+          <label class="toolbar-check">
+            <input data-snap-toggle type="checkbox" ${this.state.snapToGrid ? "checked" : ""} />
+            <span>Snap</span>
+          </label>
+          <label class="toolbar-field">
+            <span>Grid</span>
+            <input data-grid-size type="number" min="4" max="256" step="4" value="${this.state.gridSize}" />
+          </label>
+        </div>
+        <div class="toolbar-group canvas-controls compact-grid-controls">
+          <span class="tool-strip-label">Canvas</span>
+          <label class="toolbar-field">
+            <span>W</span>
+            <input data-scene-width type="number" min="64" max="8192" step="16" value="${this.state.scene.width}" />
+          </label>
+          <label class="toolbar-field">
+            <span>H</span>
+            <input data-scene-height type="number" min="64" max="8192" step="16" value="${this.state.scene.height}" />
+          </label>
+        </div>
       </div>
     `;
 
@@ -82,6 +104,14 @@ export class Toolbar {
     this.root.querySelector<HTMLInputElement>("[data-grid-size]")?.addEventListener("input", (event) => {
       const value = Number((event.target as HTMLInputElement).value);
       if (Number.isFinite(value)) this.state.previewGridSize(value);
+    });
+    this.root.querySelector<HTMLInputElement>("[data-scene-width]")?.addEventListener("input", (event) => {
+      const value = Number((event.target as HTMLInputElement).value);
+      if (Number.isFinite(value)) this.state.previewSceneSize({ width: value });
+    });
+    this.root.querySelector<HTMLInputElement>("[data-scene-height]")?.addEventListener("input", (event) => {
+      const value = Number((event.target as HTMLInputElement).value);
+      if (Number.isFinite(value)) this.state.previewSceneSize({ height: value });
     });
 
     const importInput = this.root.querySelector<HTMLInputElement>("[data-import-file]");

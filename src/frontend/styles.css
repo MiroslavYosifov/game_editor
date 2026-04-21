@@ -48,20 +48,40 @@ button:disabled:hover {
 .editor-shell {
   display: grid;
   grid-template-columns: minmax(190px, 260px) minmax(360px, 1fr) minmax(230px, 320px);
-  grid-template-rows: 56px calc(100vh - 56px);
+  grid-template-rows: 96px calc(100vh - 96px);
   min-height: 100vh;
 }
 
 .toolbar {
-  align-items: center;
+  align-content: stretch;
   background: #ffffff;
   border-bottom: 1px solid #cad3df;
+  display: grid;
+  grid-column: 1 / 4;
+  grid-template-rows: 56px 40px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.toolbar-row {
+  align-items: center;
   display: flex;
   gap: 18px;
-  grid-column: 1 / 4;
   min-width: 0;
   overflow-x: auto;
   padding: 8px 14px;
+}
+
+.toolbar-main-row {
+  background: #ffffff;
+}
+
+.toolbar-sub-row {
+  background: #f8fafc;
+  border-top: 1px solid #e2e8f0;
+  gap: 12px;
+  padding-bottom: 5px;
+  padding-top: 5px;
 }
 
 .toolbar-group {
@@ -80,6 +100,46 @@ button:disabled:hover {
 
 .toolbar-btn {
   font-weight: 700;
+}
+
+.compact-tools,
+.compact-grid-controls {
+  align-items: center;
+  gap: 6px;
+}
+
+.tool-strip-label {
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.compact-tool-btn {
+  font-size: 12px;
+  min-height: 28px;
+  padding: 5px 8px;
+}
+
+.compact-grid-controls .toolbar-check,
+.compact-grid-controls .toolbar-field {
+  min-height: 28px;
+  padding: 3px 7px;
+}
+
+.compact-grid-controls .toolbar-check span,
+.compact-grid-controls .toolbar-field span {
+  font-size: 11px;
+}
+
+.compact-grid-controls .toolbar-field input {
+  padding: 2px 5px;
+  width: 58px;
+}
+
+.canvas-controls .toolbar-field input {
+  width: 68px;
 }
 
 .toolbar-btn:hover {
@@ -359,62 +419,35 @@ h3 {
 }
 
 .asset-browser {
-  display: grid;
-  gap: 6px;
-  max-height: 190px;
+  display: flex;
+  gap: 8px;
   margin-bottom: 12px;
-  overflow-y: auto;
-  padding-right: 2px;
+  overflow-x: auto;
+  padding-bottom: 4px;
 }
 
 .asset-card {
   align-items: center;
-  display: grid;
-  gap: 6px;
-  grid-template-columns: 42px minmax(0, 1fr);
-  padding: 6px;
-  text-align: left;
+  display: inline-flex;
+  flex: 0 0 auto;
+  height: 46px;
+  justify-content: center;
+  padding: 4px;
+  width: 46px;
 }
 
 .asset-card img {
   background: #f8fafc;
-  border: 1px solid #e2e8f0;
   border-radius: 4px;
-  height: 42px;
+  height: 36px;
   object-fit: contain;
-  width: 42px;
-}
-
-.asset-card span {
-  color: #111827;
-  font-size: 12px;
-  font-weight: 700;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.asset-card small {
-  color: #64748b;
-  font-size: 11px;
-  grid-column: 2;
-  margin-top: -5px;
+  width: 36px;
 }
 
 .asset-card.selected,
 .asset-card:hover {
   background: #111827;
   border-color: #111827;
-}
-
-.asset-card.selected span,
-.asset-card:hover span {
-  color: #ffffff;
-}
-
-.asset-card.selected small,
-.asset-card:hover small {
-  color: #d8e0ea;
 }
 
 .sheet-upload {

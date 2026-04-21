@@ -1,4 +1,4 @@
-import type { ObjectType, PhysicsMode, Scene, SceneObject } from "../../shared/types";
+import type { AssetSummary, ObjectType, PhysicsMode, Scene, SceneObject } from "../../shared/types";
 
 const object = (
   id: string,
@@ -32,35 +32,56 @@ const object = (
   }
 });
 
-export function createExamplePlatformScene(): Scene {
+const spriteObject = (
+  id: string,
+  name: string,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  zIndex: number,
+  asset?: AssetSummary
+): SceneObject => ({
+  ...object(id, "sprite", name, x, y, width, height, "#64748b", zIndex, true, "dynamic"),
+  sprite: {
+    assetId: asset?.id ?? "",
+    imageUrl: asset?.url ?? "",
+    sheetUrl: asset?.sheetUrl ?? "",
+    animation: "",
+    animationSpeed: 0.16,
+    playing: true
+  }
+});
+
+export function createExamplePlatformScene(heroAsset?: AssetSummary): Scene {
   return {
     id: "example-snake-scene",
-    name: "Snake Game Scene",
+    name: "Sprite Maze Scene",
     width: 1280,
     height: 720,
     updatedAt: new Date().toISOString(),
     objects: [
-      object("snake-bg", "rectangle", "Dark Background", 0, 0, 1280, 720, "#111827", 1, false),
-      object("snake-board", "rectangle", "Gray Playfield", 160, 80, 800, 560, "#d1d5db", 2, false),
-      object("snake-border-top", "rectangle", "Top Wall", 160, 80, 800, 32, "#020617", 10),
-      object("snake-border-bottom", "rectangle", "Bottom Wall", 160, 608, 800, 32, "#020617", 11),
-      object("snake-border-left", "rectangle", "Left Wall", 160, 80, 32, 560, "#020617", 12),
-      object("snake-border-right", "rectangle", "Right Wall", 928, 80, 32, 560, "#020617", 13),
-      object("snake-maze-wall-1", "rectangle", "Maze Wall 1", 320, 208, 288, 32, "#374151", 20),
-      object("snake-maze-wall-2", "rectangle", "Maze Wall 2", 672, 208, 32, 224, "#374151", 21),
-      object("snake-maze-wall-3", "rectangle", "Maze Wall 3", 352, 480, 320, 32, "#374151", 22),
-      object("snake-head", "rectangle", "Snake Head", 608, 336, 48, 48, "#86efac", 30, true, "dynamic"),
-      object("snake-eye-left", "circle", "Snake Eye Left", 618, 348, 8, 8, "#020617", 31, false),
-      object("snake-eye-right", "circle", "Snake Eye Right", 642, 348, 8, 8, "#020617", 32, false),
-      object("snake-body-1", "rectangle", "Snake Body 1", 560, 336, 48, 48, "#22c55e", 33, true, "dynamic"),
-      object("snake-body-2", "rectangle", "Snake Body 2", 512, 336, 48, 48, "#16a34a", 34, true, "dynamic"),
-      object("snake-body-3", "rectangle", "Snake Body 3", 464, 336, 48, 48, "#15803d", 35, true, "dynamic"),
-      object("snake-body-4", "rectangle", "Snake Body 4", 416, 336, 48, 48, "#166534", 36, true, "dynamic"),
-      object("snake-body-5", "rectangle", "Snake Body 5", 416, 384, 48, 48, "#15803d", 37, true, "dynamic"),
-      object("snake-body-6", "rectangle", "Snake Body 6", 416, 432, 48, 48, "#16a34a", 38, true, "dynamic"),
-      object("snake-food", "circle", "Food", 800, 336, 40, 40, "#ef4444", 40, false),
-      object("snake-score-panel", "rectangle", "Score Panel", 1000, 80, 160, 96, "#020617", 50, false),
-      object("snake-score-text", "text", "Score 0", 1024, 112, 112, 36, "#f8fafc", 51, false)
+      object("maze-bg", "rectangle", "Dark Background", 0, 0, 1280, 720, "#0f172a", 1, false),
+      object("maze-board", "rectangle", "Gray Arena", 128, 72, 880, 576, "#d1d5db", 2, false),
+      object("maze-shadow", "rectangle", "Arena Shadow", 152, 96, 880, 576, "#020617", 1, false),
+      object("maze-border-top", "rectangle", "Top Wall", 128, 72, 880, 28, "#020617", 10),
+      object("maze-border-bottom", "rectangle", "Bottom Wall", 128, 620, 880, 28, "#020617", 11),
+      object("maze-border-left", "rectangle", "Left Wall", 128, 72, 28, 576, "#020617", 12),
+      object("maze-border-right", "rectangle", "Right Wall", 980, 72, 28, 576, "#020617", 13),
+      object("maze-wall-1", "rectangle", "Upper Platform", 264, 188, 304, 28, "#374151", 20),
+      object("maze-wall-2", "rectangle", "Central Pillar", 632, 188, 28, 252, "#374151", 21),
+      object("maze-wall-3", "rectangle", "Lower Platform", 300, 500, 356, 28, "#374151", 22),
+      object("maze-wall-4", "rectangle", "Right Block", 764, 352, 148, 28, "#374151", 23),
+      object("maze-goal", "rectangle", "Exit Gate", 892, 520, 64, 80, "#f8fafc", 24, false),
+      spriteObject("maze-hero-sprite", "Hero Sprite", 220, 452, 92, 104, 40, heroAsset),
+      object("maze-patrol-1", "circle", "Patrol Enemy 1", 520, 284, 46, 46, "#ef4444", 41, true, "dynamic"),
+      object("maze-patrol-2", "circle", "Patrol Enemy 2", 804, 220, 46, 46, "#f97316", 42, true, "dynamic"),
+      object("maze-coin-1", "circle", "Coin 1", 360, 128, 28, 28, "#facc15", 50, false),
+      object("maze-coin-2", "circle", "Coin 2", 720, 128, 28, 28, "#facc15", 51, false),
+      object("maze-coin-3", "circle", "Coin 3", 848, 456, 28, 28, "#facc15", 52, false),
+      object("maze-ui-panel", "rectangle", "HUD Panel", 1048, 72, 168, 132, "#020617", 60, false),
+      object("maze-title-text", "text", "Sprite Maze", 1072, 100, 120, 34, "#f8fafc", 61, false),
+      object("maze-goal-text", "text", "Goal: reach the gate", 1064, 148, 136, 36, "#cbd5e1", 62, false)
     ]
   };
 }

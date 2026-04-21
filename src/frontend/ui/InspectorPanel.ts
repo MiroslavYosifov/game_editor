@@ -270,9 +270,7 @@ export class InspectorPanel {
           .map(
             (asset) => `
               <button type="button" class="asset-card ${selectedAsset?.id === asset.id ? "selected" : ""}" data-asset-pick="${this.escape(asset.id)}">
-                <img src="${this.escape(asset.url)}" alt="" />
-                <span>${this.escape(asset.name)}</span>
-                <small>${asset.type === "spritesheet" ? `${asset.frameNames?.length ?? 0} frames` : "image"}</small>
+                <img src="${this.escape(asset.url)}" alt="" title="${this.escape(asset.name)} - ${asset.type === "spritesheet" ? `${asset.frameNames?.length ?? 0} frames` : "image"}" />
               </button>
             `
           )

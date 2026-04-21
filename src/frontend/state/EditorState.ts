@@ -51,6 +51,22 @@ export class EditorState {
     this.emit();
   }
 
+  setSceneSize(size: Partial<Pick<Scene, "width" | "height">>): void {
+    const width = this.clampSceneDimension(size.width ?? this.scene.width);
+    const height = this.clampSceneDimension(size.height ?? this.scene.height);
+    if (width === this.scene.width && height === this.scene.height) return;
+    this.recordHistory();
+    this.scene = { ...this.scene, width, height, updatedAt: new Date().toISOString() };
+    this.emit();
+  }
+
+  previewSceneSize(size: Partial<Pick<Scene, "width" | "height">>): void {
+    const width = this.clampSceneDimension(size.width ?? this.scene.width);
+    const height = this.clampSceneDimension(size.height ?? this.scene.height);
+    this.scene = { ...this.scene, width, height, updatedAt: new Date().toISOString() };
+    this.emit();
+  }
+
   previewSceneName(name: string): void {
     this.scene = { ...this.scene, name, updatedAt: new Date().toISOString() };
     this.emit();
@@ -319,5 +335,9 @@ export class EditorState {
         }
       }))
     };
+  }
+
+  private clampSceneDimension(value: number): number {
+    return Math.max(64, Math.min(8192, Math.round(value)));
   }
 }
