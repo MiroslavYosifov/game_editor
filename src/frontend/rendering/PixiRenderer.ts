@@ -2,7 +2,7 @@ import { AnimatedSprite, Application, Container, Graphics, Sprite, Text, TextSty
 import type { SceneObject } from "../../shared/types";
 import { EditorState } from "../state/EditorState";
 import { Camera2D } from "./Camera2D";
-import { containsPoint, intersectsRect, isNear, toLocalPoint } from "./geometry";
+import { containsPoint, getWorldBounds, intersectsRect, isNear, toLocalPoint } from "./geometry";
 import { SelectionOverlayRenderer } from "./SelectionOverlayRenderer";
 import { SpriteAssetCache } from "./SpriteAssetCache";
 
@@ -61,31 +61,79 @@ export class PixiRenderer {
     return this.camera.toViewportRect(rect);
   }
 
+  zoomAt(point: { x: number; y: number }, factor: number): void {
+    this.camera.zoomAt(point, factor);
+    this.render();
+  }
+
+  zoomBy(factor: number): void {
+    this.zoomAt(
+      {
+        x: this.host.clientWidth / 2,
+        y: this.host.clientHeight / 2
+      },
+      factor
+    );
+  }
+
+  panBy(deltaX: number, deltaY: number): void {
+    this.camera.panBy(deltaX, deltaY);
+    this.render();
+  }
+
+  resetView(): void {
+    this.camera.resetView();
+    this.render();
+  }
+
+  frameObjects(objects: SceneObject[]): boolean {
+    if (objects.length === 0) return false;
+
+    const bounds = objects.map((object) => getWorldBounds(object));
+    const minX = Math.min(...bounds.map((bound) => bound.x));
+    const minY = Math.min(...bounds.map((bound) => bound.y));
+    const maxX = Math.max(...bounds.map((bound) => bound.x + bound.width));
+    const maxY = Math.max(...bounds.map((bound) => bound.y + bound.height));
+
+    this.updateCamera();
+    this.camera.frameRect(this.host.clientWidth, this.host.clientHeight, {
+      x: minX,
+      y: minY,
+      width: maxX - minX,
+      height: maxY - minY
+    });
+    this.render();
+    return true;
+  }
+
   render(): void {
     this.world.removeChildren().forEach((child) => child.destroy({ children: true }));
     this.updateCamera();
     this.drawViewportBackground();
     this.drawBackground();
     this.drawSceneBounds();
-    for (const object of this.state.scene.objects) this.drawObject(object);
+    for (const object of this.state.scene.objects) {
+      if (object.hidden) continue;
+      this.drawObject(object);
+    }
 
-    const selectedObjects = this.state.selectedObjects;
+    const selectedObjects = this.state.selectedObjects.filter((object) => !object.hidden);
     for (const object of selectedObjects) this.drawSelection(object, selectedObjects.length === 1);
   }
 
   hitTest(point: { x: number; y: number }): SceneObject | null {
-    const sorted = [...this.state.scene.objects].sort((a, b) => b.zIndex - a.zIndex);
+    const sorted = [...this.state.scene.objects].filter((object) => !object.hidden && !object.locked).sort((a, b) => b.zIndex - a.zIndex);
     return sorted.find((object) => containsPoint(object, point)) ?? null;
   }
 
   hitTestRect(rect: { x: number; y: number; width: number; height: number }): SceneObject[] {
-    return this.state.scene.objects.filter((object) => intersectsRect(object, rect));
+    return this.state.scene.objects.filter((object) => !object.hidden && !object.locked && intersectsRect(object, rect));
   }
 
   hitSelectionControl(point: { x: number; y: number }): SelectionControl | null {
     if (this.state.selectedObjects.length !== 1) return null;
     const selected = this.state.selectedObject;
-    if (!selected) return null;
+    if (!selected || selected.hidden || selected.locked) return null;
 
     const local = toLocalPoint(selected, point);
     const halfWidth = selected.width / 2;

@@ -10,6 +10,11 @@ export class Toolbar {
     private readonly onDeleteScene: (id: string) => void,
     private readonly onRefreshScenes: () => void,
     private readonly onSave: () => void,
+    private readonly onSaveAs: () => void,
+    private readonly onFrameSelected: () => void,
+    private readonly onFitView: () => void,
+    private readonly onZoomIn: () => void,
+    private readonly onZoomOut: () => void,
     private readonly onNewScene: () => void
   ) {}
 
@@ -46,6 +51,7 @@ export class Toolbar {
           <button class="toolbar-btn btn-redo" data-action="redo" ${this.state.canRedo ? "" : "disabled"}>Redo</button>
           <button class="toolbar-btn btn-new" data-action="new">New</button>
           <button class="toolbar-btn btn-save" data-action="save">Save</button>
+          <button class="toolbar-btn btn-primary" data-action="save-as">Save As</button>
           <button class="toolbar-btn btn-primary" data-action="import">Import JSON</button>
           <button class="toolbar-btn btn-secondary" data-action="export">Export JSON</button>
           <input data-import-file type="file" accept="application/json,.json" hidden />
@@ -55,6 +61,17 @@ export class Toolbar {
         <div class="toolbar-group compact-tools">
           <span class="tool-strip-label">Add</span>
           ${objectTypes.map((item) => `<button class="toolbar-btn compact-tool-btn" data-add="${item.type}">${item.label}</button>`).join("")}
+        </div>
+        <div class="toolbar-group compact-tools">
+          <span class="tool-strip-label">Arrange</span>
+          <button class="toolbar-btn compact-tool-btn" data-align="left" title="Align left">L</button>
+          <button class="toolbar-btn compact-tool-btn" data-align="center" title="Align center">HC</button>
+          <button class="toolbar-btn compact-tool-btn" data-align="right" title="Align right">R</button>
+          <button class="toolbar-btn compact-tool-btn" data-align="top" title="Align top">T</button>
+          <button class="toolbar-btn compact-tool-btn" data-align="middle" title="Align middle">VC</button>
+          <button class="toolbar-btn compact-tool-btn" data-align="bottom" title="Align bottom">B</button>
+          <button class="toolbar-btn compact-tool-btn" data-distribute="horizontal" title="Distribute horizontally">DH</button>
+          <button class="toolbar-btn compact-tool-btn" data-distribute="vertical" title="Distribute vertically">DV</button>
         </div>
         <div class="toolbar-group grid-controls compact-grid-controls">
           <span class="tool-strip-label">Grid</span>
@@ -69,6 +86,10 @@ export class Toolbar {
         </div>
         <div class="toolbar-group canvas-controls compact-grid-controls">
           <span class="tool-strip-label">Canvas</span>
+          <button class="toolbar-btn compact-tool-btn" data-action="fit-view">Fit</button>
+          <button class="toolbar-btn compact-tool-btn" data-action="frame-selected">Frame</button>
+          <button class="toolbar-btn compact-tool-btn" data-action="zoom-in" aria-label="Zoom in">+</button>
+          <button class="toolbar-btn compact-tool-btn" data-action="zoom-out" aria-label="Zoom out">-</button>
           <label class="toolbar-field">
             <span>W</span>
             <input data-scene-width type="number" min="64" max="8192" step="16" value="${this.state.scene.width}" />
@@ -84,8 +105,19 @@ export class Toolbar {
     this.root.querySelectorAll<HTMLButtonElement>("[data-add]").forEach((button) => {
       button.addEventListener("click", () => this.state.addObject(button.dataset.add as ObjectType));
     });
+    this.root.querySelectorAll<HTMLButtonElement>("[data-align]").forEach((button) => {
+      button.addEventListener("click", () => this.state.alignSelected(button.dataset.align as "left" | "center" | "right" | "top" | "middle" | "bottom"));
+    });
+    this.root.querySelectorAll<HTMLButtonElement>("[data-distribute]").forEach((button) => {
+      button.addEventListener("click", () => this.state.distributeSelected(button.dataset.distribute as "horizontal" | "vertical"));
+    });
 
     this.root.querySelector<HTMLButtonElement>('[data-action="save"]')?.addEventListener("click", this.onSave);
+    this.root.querySelector<HTMLButtonElement>('[data-action="save-as"]')?.addEventListener("click", this.onSaveAs);
+    this.root.querySelector<HTMLButtonElement>('[data-action="fit-view"]')?.addEventListener("click", this.onFitView);
+    this.root.querySelector<HTMLButtonElement>('[data-action="frame-selected"]')?.addEventListener("click", this.onFrameSelected);
+    this.root.querySelector<HTMLButtonElement>('[data-action="zoom-in"]')?.addEventListener("click", this.onZoomIn);
+    this.root.querySelector<HTMLButtonElement>('[data-action="zoom-out"]')?.addEventListener("click", this.onZoomOut);
     this.root.querySelector<HTMLButtonElement>('[data-action="new"]')?.addEventListener("click", this.onNewScene);
     this.root.querySelector<HTMLButtonElement>('[data-action="load-scene"]')?.addEventListener("click", () => {
       const sceneId = this.root.querySelector<HTMLSelectElement>("[data-load-scene]")?.value;

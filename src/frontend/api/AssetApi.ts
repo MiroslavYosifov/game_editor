@@ -7,6 +7,12 @@ export class AssetApi {
     return requestJson<AssetSummary[]>("/api/assets");
   }
 
+  async deleteAsset(id: string): Promise<void> {
+    return requestJson<void>(`/api/assets/${encodeURIComponent(id)}`, {
+      method: "DELETE"
+    });
+  }
+
   async uploadImage(file: File): Promise<AssetSummary> {
     return requestJson<AssetSummary>("/api/assets/image", {
       method: "POST",

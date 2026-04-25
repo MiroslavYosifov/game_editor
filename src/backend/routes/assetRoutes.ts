@@ -15,6 +15,19 @@ export async function handleAssetRoutes(
     return true;
   }
 
+  const assetDeleteMatch = pathname.match(/^\/api\/assets\/([^/]+)$/);
+  if (assetDeleteMatch && request.method === "DELETE") {
+    const deleted = await assetService.deleteAsset(decodeURIComponent(assetDeleteMatch[1]));
+    if (!deleted) {
+      sendJson(response, 404, ERROR_ASSET_NOT_FOUND);
+      return true;
+    }
+    sendCors(response);
+    response.statusCode = 204;
+    response.end();
+    return true;
+  }
+
   if (pathname === "/api/assets/image" && request.method === "POST") {
     const asset = await assetService.uploadImageAsset(request);
     sendJson(response, 201, asset);

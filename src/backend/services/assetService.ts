@@ -151,6 +151,26 @@ export class AssetService {
     };
   }
 
+  async deleteAsset(id: string): Promise<boolean> {
+    const client = this.requireSupabase();
+    const row = await this.loadAssetById(id);
+    if (!row) return false;
+
+    await client.deleteStorageObject(row.storage_path);
+
+    const sheetStoragePath = typeof row.metadata?.sheetStoragePath === "string" ? row.metadata.sheetStoragePath : "";
+    if (row.type === "spritesheet" && sheetStoragePath) {
+      await client.deleteStorageObject(sheetStoragePath);
+    }
+
+    await client.request<unknown>(`/rest/v1/assets?id=eq.${encodeURIComponent(id)}`, {
+      method: "DELETE",
+      headers: { Prefer: "return=minimal" }
+    });
+
+    return true;
+  }
+
   private async loadAssetById(id: string): Promise<AssetRow | null> {
     const client = this.requireSupabase();
     const rows = await client.request<AssetRow[]>(

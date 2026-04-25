@@ -316,8 +316,15 @@ h3 {
 .object-row {
   align-items: stretch;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 34px 34px;
+  grid-template-columns: minmax(0, 1fr) 56px;
   gap: 4px;
+}
+
+.object-actions {
+  display: grid;
+  gap: 4px;
+  grid-template-columns: repeat(2, 26px);
+  grid-template-rows: repeat(2, 26px);
 }
 
 .object-select {
@@ -328,12 +335,21 @@ h3 {
   width: 100%;
 }
 
+.object-toggle,
 .object-copy,
 .object-delete {
   align-items: center;
   display: inline-flex;
+  font-size: 11px;
+  height: 26px;
   justify-content: center;
   padding: 0;
+  width: 26px;
+}
+
+.object-toggle {
+  color: #475569;
+  font-weight: 800;
 }
 
 .object-copy {
@@ -355,6 +371,14 @@ h3 {
   background: #111827;
   border-color: #111827;
   color: #ffffff;
+}
+
+.object-row.is-hidden .object-select {
+  opacity: 0.6;
+}
+
+.object-row.is-locked .object-select {
+  border-style: dashed;
 }
 
 .object-row.selected .object-select small,
@@ -390,7 +414,7 @@ h3 {
   align-items: end;
   display: grid;
   gap: 8px;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   margin-bottom: 12px;
 }
 
@@ -399,6 +423,14 @@ h3 {
 }
 
 .asset-refresh {
+  font-size: 11px;
+  height: 37px;
+  margin-bottom: 0;
+  padding: 0 8px;
+  text-transform: uppercase;
+}
+
+.asset-delete {
   font-size: 11px;
   height: 37px;
   margin-bottom: 0;

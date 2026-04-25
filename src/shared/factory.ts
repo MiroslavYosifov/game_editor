@@ -41,6 +41,8 @@ export function createSceneObject(type: ObjectType, index: number): SceneObject 
     rotation: 0,
     zIndex: index,
     fill: type === "circle" ? "#2f80ed" : type === "text" ? "#111827" : "#16a34a",
+    locked: false,
+    hidden: false,
     sprite:
       type === "sprite"
         ? {

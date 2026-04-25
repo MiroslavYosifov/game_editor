@@ -1,4 +1,4 @@
-import { createScene } from "../../shared/factory";
+import { createId, createScene } from "../../shared/factory";
 import type { AssetSummary, Scene, SceneSummary } from "../../shared/types";
 import { AssetApi } from "../api/AssetApi";
 import { SceneApi } from "../api/SceneApi";
@@ -41,7 +41,8 @@ export class EditorApp {
       () => this.assetSummaries,
       (file) => this.uploadImageAsset(file),
       (image, json) => this.uploadSpritesheetAsset(image, json),
-      () => this.refreshAssets()
+      () => this.refreshAssets(),
+      (assetId) => void this.deleteAsset(assetId)
     );
     this.toolbar = new Toolbar(
       this.shell.toolbarRoot,
@@ -51,6 +52,11 @@ export class EditorApp {
       (sceneId) => void this.deleteScene(sceneId),
       () => void this.refreshScenes(),
       () => void this.saveScene(),
+      () => void this.saveSceneAs(),
+      () => this.frameSelected(),
+      () => this.fitView(),
+      () => this.zoomIn(),
+      () => this.zoomOut(),
       () => this.createNewScene()
     );
 
@@ -160,6 +166,24 @@ export class EditorApp {
     }
   }
 
+  private async deleteAsset(assetId: string): Promise<void> {
+    const asset = this.assetSummaries.find((item) => item.id === assetId);
+    if (!assetId || !asset) return;
+    if (!window.confirm(`Delete asset "${asset.name}"?`)) return;
+
+    log.info("Deleting asset", { id: asset.id, name: asset.name, type: asset.type });
+    try {
+      await this.assetApi.deleteAsset(assetId);
+      this.assetSummaries = this.assetSummaries.filter((item) => item.id !== assetId);
+      this.detachDeletedAssetFromScene(assetId);
+      this.inspector.render();
+      this.setStatus(`Deleted asset ${asset.name}`);
+    } catch (error) {
+      log.error("Asset delete failed", error);
+      this.setStatus(error instanceof Error ? error.message : "Asset delete failed");
+    }
+  }
+
   private dedupeAssets(assets: AssetSummary[]): AssetSummary[] {
     const seen = new Set<string>();
     return assets.filter((asset) => {
@@ -212,10 +236,55 @@ export class EditorApp {
     }
   }
 
+  private async saveSceneAs(): Promise<void> {
+    const requestedName = window.prompt("Save scene as", `${this.state.scene.name} Copy`);
+    const nextName = requestedName?.trim();
+    if (!nextName) return;
+
+    const sceneCopy: Scene = {
+      ...this.state.scene,
+      id: createId("scene"),
+      name: nextName,
+      updatedAt: new Date().toISOString()
+    };
+
+    log.info("Saving scene as copy", { sourceId: this.state.scene.id, targetId: sceneCopy.id, name: sceneCopy.name });
+    try {
+      const saved = await this.sceneApi.saveScene(sceneCopy);
+      this.state.setScene(saved);
+      this.sceneSummaries = await this.sceneApi.listScenes();
+      this.toolbar.render();
+      this.setStatus(`Saved copy as ${saved.name}`);
+    } catch (error) {
+      log.error("Scene save as failed", error);
+      this.setStatus(error instanceof Error ? error.message : "Save As failed");
+    }
+  }
+
   private createNewScene(): void {
     log.info("Creating new scene");
     this.state.setScene(createScene("New Scene"));
     this.setStatus("Created new scene");
+  }
+
+  private frameSelected(): void {
+    const framed = this.renderer.frameObjects(this.state.selectedObjects);
+    this.setStatus(framed ? "Framed selected object" : "Select an object to frame.");
+  }
+
+  private fitView(): void {
+    this.renderer.resetView();
+    this.setStatus("Fitted scene to viewport");
+  }
+
+  private zoomIn(): void {
+    this.renderer.zoomBy(1.1);
+    this.setStatus("Zoomed in");
+  }
+
+  private zoomOut(): void {
+    this.renderer.zoomBy(1 / 1.1);
+    this.setStatus("Zoomed out");
   }
 
   private async deleteScene(sceneId: string): Promise<void> {
@@ -248,5 +317,23 @@ export class EditorApp {
     const firstSummary = this.sceneSummaries[0];
     if (!firstSummary) return null;
     return this.sceneApi.loadScene(firstSummary.id);
+  }
+
+  private detachDeletedAssetFromScene(assetId: string): void {
+    const patches = this.state.scene.objects
+      .filter((object) => object.sprite?.assetId === assetId)
+      .map((object) => ({
+        id: object.id,
+        patch: {
+          sprite: {
+            ...(object.sprite ?? { assetId: "", imageUrl: "", sheetUrl: "", animation: "", animationSpeed: 0.12, playing: true }),
+            assetId: "",
+            imageUrl: "",
+            sheetUrl: "",
+            animation: ""
+          }
+        }
+      }));
+    if (patches.length > 0) this.state.updateObjects(patches);
   }
 }

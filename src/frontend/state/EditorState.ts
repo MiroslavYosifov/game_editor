@@ -214,6 +214,70 @@ export class EditorState {
     this.updatePhysics(id, { velocity: { ...object.physics.velocity, ...patch } });
   }
 
+  toggleObjectLocked(id: string): void {
+    const object = this.getObject(id);
+    if (!object) return;
+    this.updateObject(id, { locked: !object.locked });
+  }
+
+  toggleObjectHidden(id: string): void {
+    const object = this.getObject(id);
+    if (!object) return;
+    this.updateObject(id, { hidden: !object.hidden });
+  }
+
+  alignSelected(mode: "left" | "center" | "right" | "top" | "middle" | "bottom"): void {
+    const selected = this.selectedObjects.filter((object) => !object.locked);
+    if (selected.length < 2) return;
+
+    const left = Math.min(...selected.map((object) => object.x));
+    const right = Math.max(...selected.map((object) => object.x + object.width));
+    const top = Math.min(...selected.map((object) => object.y));
+    const bottom = Math.max(...selected.map((object) => object.y + object.height));
+    const center = (left + right) / 2;
+    const middle = (top + bottom) / 2;
+
+    this.updateObjects(
+      selected.map((object) => ({
+        id: object.id,
+        patch:
+          mode === "left"
+            ? { x: this.snapValue(left) }
+            : mode === "center"
+              ? { x: this.snapValue(center - object.width / 2) }
+              : mode === "right"
+                ? { x: this.snapValue(right - object.width) }
+                : mode === "top"
+                  ? { y: this.snapValue(top) }
+                  : mode === "middle"
+                    ? { y: this.snapValue(middle - object.height / 2) }
+                    : { y: this.snapValue(bottom - object.height) }
+      }))
+    );
+  }
+
+  distributeSelected(axis: "horizontal" | "vertical"): void {
+    const selected = this.selectedObjects.filter((object) => !object.locked);
+    if (selected.length < 3) return;
+
+    const sorted =
+      axis === "horizontal"
+        ? [...selected].sort((a, b) => a.x - b.x)
+        : [...selected].sort((a, b) => a.y - b.y);
+
+    const start = axis === "horizontal" ? sorted[0].x : sorted[0].y;
+    const endObject = sorted[sorted.length - 1];
+    const end = axis === "horizontal" ? endObject.x : endObject.y;
+    const step = (end - start) / (sorted.length - 1);
+
+    this.updateObjects(
+      sorted.map((object, index) => ({
+        id: object.id,
+        patch: axis === "horizontal" ? { x: this.snapValue(start + step * index) } : { y: this.snapValue(start + step * index) }
+      }))
+    );
+  }
+
   get selectedObject(): SceneObject | null {
     return this.selectedObjectId ? (this.getObject(this.selectedObjectId) ?? null) : null;
   }

@@ -18,13 +18,17 @@ export class HierarchyPanel {
         ${objects
           .map(
             (object) => `
-              <div class="object-row ${this.state.isSelected(object.id) ? "selected" : ""}">
+              <div class="object-row ${this.state.isSelected(object.id) ? "selected" : ""} ${object.hidden ? "is-hidden" : ""} ${object.locked ? "is-locked" : ""}">
                 <button class="object-select" data-object-id="${object.id}">
                   <span>${this.escape(object.name)}</span>
-                  <small>${object.type} - z ${object.zIndex}</small>
+                  <small>${object.type} - z ${object.zIndex}${object.hidden ? " - hidden" : ""}${object.locked ? " - locked" : ""}</small>
                 </button>
-                <button class="object-copy" data-duplicate-object-id="${object.id}" aria-label="Duplicate ${this.escape(object.name)}">C</button>
-                <button class="object-delete" data-delete-object-id="${object.id}" aria-label="Delete ${this.escape(object.name)}">x</button>
+                <div class="object-actions">
+                  <button class="object-toggle ${object.locked ? "active" : ""}" data-lock-object-id="${object.id}" aria-label="Lock ${this.escape(object.name)}">L</button>
+                  <button class="object-toggle ${object.hidden ? "active" : ""}" data-hide-object-id="${object.id}" aria-label="Hide ${this.escape(object.name)}">H</button>
+                  <button class="object-copy" data-duplicate-object-id="${object.id}" aria-label="Duplicate ${this.escape(object.name)}">C</button>
+                  <button class="object-delete" data-delete-object-id="${object.id}" aria-label="Delete ${this.escape(object.name)}">x</button>
+                </div>
               </div>
             `
           )
@@ -42,6 +46,14 @@ export class HierarchyPanel {
 
     this.root.querySelectorAll<HTMLButtonElement>("[data-duplicate-object-id]").forEach((button) => {
       button.addEventListener("click", () => this.state.duplicateObject(button.dataset.duplicateObjectId ?? ""));
+    });
+
+    this.root.querySelectorAll<HTMLButtonElement>("[data-lock-object-id]").forEach((button) => {
+      button.addEventListener("click", () => this.state.toggleObjectLocked(button.dataset.lockObjectId ?? ""));
+    });
+
+    this.root.querySelectorAll<HTMLButtonElement>("[data-hide-object-id]").forEach((button) => {
+      button.addEventListener("click", () => this.state.toggleObjectHidden(button.dataset.hideObjectId ?? ""));
     });
 
     this.root.querySelectorAll<HTMLButtonElement>("[data-delete-object-id]").forEach((button) => {

@@ -2,30 +2,63 @@ import { PixiRenderer, type ResizeHandle } from "../rendering/PixiRenderer";
 import { EditorState } from "../state/EditorState";
 import type { SceneObject } from "../../shared/types";
 
-type DragMode = "move" | "resize" | "select" | null;
+type DragMode = "move" | "resize" | "select" | "pan" | null;
 type ObjectStart = Pick<SceneObject, "id" | "x" | "y" | "width" | "height">;
 
 export class PointerController {
   private dragMode: DragMode = null;
   private resizeHandle: ResizeHandle | null = null;
   private dragStart = { x: 0, y: 0 };
+  private viewportDragStart = { x: 0, y: 0 };
   private objectStart = { x: 0, y: 0, width: 0, height: 0 };
   private objectStarts: ObjectStart[] = [];
   private readonly marquee = document.createElement("div");
+  private isSpacePressed = false;
 
   constructor(
     private readonly view: HTMLCanvasElement,
     private readonly state: EditorState,
     private readonly renderer: PixiRenderer
   ) {
+    const wheelTarget = view.parentElement ?? view;
     view.addEventListener("pointerdown", (event) => this.onPointerDown(event));
     view.addEventListener("pointermove", (event) => this.onPointerMove(event));
     view.addEventListener("pointerup", (event) => this.onPointerUp(event));
     view.addEventListener("pointercancel", (event) => this.onPointerUp(event));
+    view.addEventListener("wheel", (event) => this.onWheel(event), { passive: false });
+    if (wheelTarget !== view) wheelTarget.addEventListener("wheel", (event) => this.onWheel(event), { passive: false });
     this.marquee.className = "selection-marquee";
     this.marquee.hidden = true;
     this.view.parentElement?.appendChild(this.marquee);
     window.addEventListener("keydown", (event) => {
+      if (event.code === "Space" && !this.isTextInput(event.target)) {
+        this.isSpacePressed = true;
+      }
+
+      if (!this.isTextInput(event.target) && (event.key === "+" || event.key === "=")) {
+        event.preventDefault();
+        this.renderer.zoomAt(this.getViewportCenter(), 1.1);
+        return;
+      }
+
+      if (!this.isTextInput(event.target) && event.key === "-") {
+        event.preventDefault();
+        this.renderer.zoomAt(this.getViewportCenter(), 1 / 1.1);
+        return;
+      }
+
+      if (!this.isTextInput(event.target) && event.key === "0") {
+        event.preventDefault();
+        this.renderer.resetView();
+        return;
+      }
+
+      if (!this.isTextInput(event.target) && event.key.toLowerCase() === "f") {
+        event.preventDefault();
+        this.renderer.frameObjects(this.state.selectedObjects);
+        return;
+      }
+
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z" && !this.isTextInput(event.target)) {
         event.preventDefault();
         if (event.shiftKey) this.state.redo();
@@ -56,9 +89,17 @@ export class PointerController {
         this.state.deleteSelected();
       }
     });
+    window.addEventListener("keyup", (event) => {
+      if (event.code === "Space") this.isSpacePressed = false;
+    });
   }
 
   private onPointerDown(event: PointerEvent): void {
+    if (event.button === 1 || (event.button === 0 && this.isSpacePressed)) {
+      this.startPanDrag(event);
+      return;
+    }
+
     const point = this.toScenePoint(event);
     const control = this.renderer.hitSelectionControl(point);
 
@@ -77,6 +118,13 @@ export class PointerController {
     if (!this.state.isSelected(hit.id)) this.state.selectObject(hit.id);
 
     this.startDrag(event, point, "move", hit);
+  }
+
+  private startPanDrag(event: PointerEvent): void {
+    this.view.setPointerCapture(event.pointerId);
+    this.dragMode = "pan";
+    this.viewportDragStart = this.toViewportPoint(event);
+    this.view.style.cursor = "grabbing";
   }
 
   private startDrag(
@@ -117,6 +165,13 @@ export class PointerController {
     }
 
     if (!this.dragMode) return;
+    if (this.dragMode === "pan") {
+      const point = this.toViewportPoint(event);
+      this.renderer.panBy(point.x - this.viewportDragStart.x, point.y - this.viewportDragStart.y);
+      this.viewportDragStart = point;
+      return;
+    }
+
     const point = this.toScenePoint(event);
     const dx = point.x - this.dragStart.x;
     const dy = point.y - this.dragStart.y;
@@ -144,6 +199,7 @@ export class PointerController {
     this.objectStarts = [];
     this.marquee.hidden = true;
     this.state.endHistoryBatch();
+    this.updateCursor(event);
   }
 
   private moveSelected(dx: number, dy: number): void {
@@ -160,6 +216,7 @@ export class PointerController {
 
   private resizeSelected(dx: number, dy: number): void {
     if (!this.resizeHandle) return;
+    if (this.state.selectedObject?.locked) return;
 
     const minSize = 12;
     const patch = {
@@ -198,6 +255,16 @@ export class PointerController {
   }
 
   private updateCursor(event: PointerEvent): void {
+    if (this.dragMode === "pan") {
+      this.view.style.cursor = "grabbing";
+      return;
+    }
+
+    if (this.isSpacePressed) {
+      this.view.style.cursor = "grab";
+      return;
+    }
+
     const point = this.toScenePoint(event);
     const control = this.renderer.hitSelectionControl(point);
     if (control?.type === "resize") {
@@ -228,7 +295,7 @@ export class PointerController {
     };
   }
 
-  private toViewportPoint(event: PointerEvent): { x: number; y: number } {
+  private toViewportPoint(event: Pick<MouseEvent, "clientX" | "clientY">): { x: number; y: number } {
     const rect = this.view.getBoundingClientRect();
     return {
       x: event.clientX - rect.left,
@@ -238,6 +305,21 @@ export class PointerController {
 
   private toScenePoint(event: PointerEvent): { x: number; y: number } {
     return this.renderer.toScenePoint(this.toViewportPoint(event));
+  }
+
+  private onWheel(event: WheelEvent): void {
+    if (this.isTextInput(event.target)) return;
+    event.preventDefault();
+    const point = this.toViewportPoint(event);
+    const factor = event.deltaY < 0 ? 1.1 : 1 / 1.1;
+    this.renderer.zoomAt(point, factor);
+  }
+
+  private getViewportCenter(): { x: number; y: number } {
+    return {
+      x: this.view.clientWidth / 2,
+      y: this.view.clientHeight / 2
+    };
   }
 
   private isTextInput(target: EventTarget | null): boolean {

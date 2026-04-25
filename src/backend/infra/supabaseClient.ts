@@ -82,6 +82,12 @@ export class SupabaseClient {
     });
   }
 
+  async deleteStorageObject(storagePath: string): Promise<void> {
+    await this.storageRequest(`/storage/v1/object/${this.config.storageBucket}/${encodeStoragePath(storagePath)}`, {
+      method: "DELETE"
+    });
+  }
+
   private getAuthHeader(): Record<string, string> {
     if (this.config.key.startsWith("sb_secret_") || this.config.key.startsWith("sb_publishable_")) return {};
     return { Authorization: `Bearer ${this.config.key}` };

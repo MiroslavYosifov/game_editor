@@ -35,6 +35,8 @@ export interface SceneObject {
   rotation: number;
   zIndex: number;
   fill: string;
+  locked?: boolean;
+  hidden?: boolean;
   sprite?: SpriteProperties;
   physics: PhysicsProperties;
 }

@@ -8,7 +8,8 @@ export class InspectorPanel {
     private readonly getAssets: () => AssetSummary[] = () => [],
     private readonly onUploadImage: (file: File) => Promise<AssetSummary | null> = async () => null,
     private readonly onUploadSpritesheet: (image: File, json: File) => Promise<AssetSummary | null> = async () => null,
-    private readonly onRefreshAssets: () => Promise<void> | void = () => undefined
+    private readonly onRefreshAssets: () => Promise<void> | void = () => undefined,
+    private readonly onDeleteAsset: (id: string) => Promise<void> | void = () => undefined
   ) {}
 
   render(): void {
@@ -74,11 +75,16 @@ export class InspectorPanel {
   }
 
   private bindSpriteInputs(object: SceneObject): void {
-    this.root.querySelectorAll<HTMLInputElement>("[data-sprite-prop]").forEach((input) => {
+    this.root.querySelectorAll<HTMLInputElement | HTMLSelectElement>("[data-sprite-prop]").forEach((input) => {
       input.addEventListener("change", () => {
         const prop = input.dataset.spriteProp as keyof NonNullable<SceneObject["sprite"]>;
         const current = object.sprite ?? this.defaultSprite();
-        const value = input.type === "number" ? Number(input.value) : input.type === "checkbox" ? input.checked : input.value;
+        const value =
+          input instanceof HTMLInputElement && input.type === "number"
+            ? Number(input.value)
+            : input instanceof HTMLInputElement && input.type === "checkbox"
+              ? input.checked
+              : input.value;
         this.state.updateObject(object.id, { sprite: { ...current, [prop]: value } });
       });
     });
@@ -151,6 +157,9 @@ export class InspectorPanel {
     });
 
     this.root.querySelector<HTMLButtonElement>("[data-refresh-assets]")?.addEventListener("click", () => void this.onRefreshAssets());
+    this.root.querySelector<HTMLButtonElement>("[data-delete-asset]")?.addEventListener("click", () => {
+      if (picker?.value) void this.onDeleteAsset(picker.value);
+    });
   }
 
   private attachAsset(object: SceneObject, asset: AssetSummary | undefined): void {
@@ -210,6 +219,8 @@ export class InspectorPanel {
     const sprite = object.sprite ?? this.defaultSprite();
     const assets = this.getAssets();
     const selectedAsset = assets.find((asset) => asset.id === sprite.assetId);
+    const animationOptions = selectedAsset?.type === "spritesheet" ? this.getAnimationOptions(selectedAsset.frameNames ?? []) : [];
+    const animationInOptions = animationOptions.includes(sprite.animation);
     return `
       <h3>Sprite</h3>
       <div class="asset-select-row">
@@ -221,6 +232,7 @@ export class InspectorPanel {
           </select>
         </label>
         <button type="button" class="asset-refresh" data-refresh-assets title="Refresh assets" aria-label="Refresh assets">Refresh</button>
+        <button type="button" class="asset-delete" data-delete-asset ${selectedAsset ? "" : "disabled"} title="Delete selected asset" aria-label="Delete selected asset">Delete</button>
       </div>
       ${this.assetBrowser(assets, selectedAsset)}
       <div class="upload-mode">
@@ -248,13 +260,33 @@ export class InspectorPanel {
       <div class="inspector-grid">
         <label class="field">
           <span>Animation</span>
-          <input data-sprite-prop="animation" value="${this.escape(sprite.animation)}" placeholder="idle" />
+          ${
+            selectedAsset?.type === "spritesheet"
+              ? `
+                <select data-sprite-prop="animation">
+                  <option value="" ${sprite.animation === "" ? "selected" : ""}>All frames</option>
+                  ${animationOptions.map((option) => `<option value="${this.escape(option)}" ${sprite.animation === option ? "selected" : ""}>${this.escape(option)}</option>`).join("")}
+                  ${sprite.animation && !animationInOptions ? `<option value="${this.escape(sprite.animation)}" selected>${this.escape(sprite.animation)} (custom)</option>` : ""}
+                </select>
+              `
+              : `<input data-sprite-prop="animation" value="${this.escape(sprite.animation)}" placeholder="idle" />`
+          }
         </label>
         <label class="field">
           <span>Speed</span>
           <input type="number" step="0.01" data-sprite-prop="animationSpeed" value="${sprite.animationSpeed}" />
         </label>
       </div>
+      ${
+        selectedAsset?.type === "spritesheet"
+          ? `
+            <label class="field">
+              <span>Custom animation filter</span>
+              <input data-sprite-prop="animation" value="${this.escape(sprite.animation)}" placeholder="run / idle / jump" />
+            </label>
+          `
+          : ""
+      }
       <label class="checkbox-field">
         <input type="checkbox" data-sprite-prop="playing" ${sprite.playing ? "checked" : ""} />
         <span>Play animation</span>
@@ -281,6 +313,31 @@ export class InspectorPanel {
 
   private defaultSprite(): NonNullable<SceneObject["sprite"]> {
     return { assetId: "", imageUrl: "", sheetUrl: "", animation: "", animationSpeed: 0.12, playing: true };
+  }
+
+  private getAnimationOptions(frameNames: string[]): string[] {
+    const options = new Set<string>();
+
+    for (const frameName of frameNames) {
+      const normalized = frameName.replace(/\.[^.]+$/, "");
+      const inferred = normalized
+        .replace(/[-_ ]?\d+$/u, "")
+        .replace(/(?:[-_ ](?:\d+|frame))$/iu, "")
+        .trim();
+
+      if (inferred && inferred !== normalized) {
+        options.add(inferred);
+      }
+    }
+
+    if (options.size > 0) return [...options];
+
+    for (const frameName of frameNames) {
+      const normalized = frameName.replace(/\.[^.]+$/, "").trim();
+      if (normalized) options.add(normalized);
+    }
+
+    return [...options];
   }
 
   private escape(value: string): string {
