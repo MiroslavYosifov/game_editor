@@ -169,7 +169,7 @@ export class PixiRenderer {
   }
 
   private drawBackground(): void {
-    const key = `${this.state.scene.width}|${this.state.scene.height}|${this.state.gridSize}`;
+    const key = `${this.state.scene.width}|${this.state.scene.height}|${this.state.scene.gridSize}`;
     if (this.lastBackgroundKey === key) return;
     this.lastBackgroundKey = key;
 
@@ -181,7 +181,7 @@ export class PixiRenderer {
     grid.beginFill(0xf4f7fb);
     grid.drawRect(0, 0, width, height);
     grid.endFill();
-    const gridSize = this.state.gridSize;
+    const gridSize = this.state.scene.gridSize;
 
     for (let x = 0; x < width; x += gridSize) {
       grid.lineStyle(x % (gridSize * 4) === 0 ? 2 : 1, x % (gridSize * 4) === 0 ? 0xc7d2de : 0xd8e0ea, 1);
@@ -209,12 +209,13 @@ export class PixiRenderer {
     const key = JSON.stringify({
       asset: tileMap.tilesetAssetId,
       image: tileMap.imageUrl,
-      grid: this.state.gridSize,
+      grid: this.state.scene.gridSize,
       showCollisionOverlay: tileMap.showCollisionOverlay,
       layers: tileMap.layers
     });
 
-    if (!tileMap.tilesetAssetId || !tileMap.imageUrl || tileMap.frames.length === 0) {
+    const hasRenderableTiles = tileMap.layers.some((layer) => layer.tiles.length > 0);
+    if (!hasRenderableTiles) {
       if (this.lastTileLayerKey) {
         this.lastTileLayerKey = "";
         this.tileLayer.removeChildren().forEach((child) => child.destroy({ children: true }));
@@ -222,30 +223,33 @@ export class PixiRenderer {
       return;
     }
 
-    const textures = this.tilesetTextureCache.get(tileMap, () => this.render());
-    if (!textures) return;
     if (this.lastTileLayerKey === key) return;
 
-    this.lastTileLayerKey = key;
     this.tileLayer.removeChildren().forEach((child) => child.destroy({ children: true }));
+    let allTexturesReady = true;
 
     for (const layer of tileMap.layers) {
       if (!layer.visible) continue;
       if (layer.id === "collision" && !tileMap.showCollisionOverlay) continue;
 
       for (const tile of layer.tiles) {
-        const texture = textures.get(tile.frameName);
-        if (!texture) continue;
+        const texture = this.tilesetTextureCache.get(tile, () => this.render());
+        if (!texture) {
+          allTexturesReady = false;
+          continue;
+        }
         const sprite = new Sprite(texture);
-        sprite.x = tile.col * this.state.gridSize;
-        sprite.y = tile.row * this.state.gridSize;
-        sprite.width = this.state.gridSize;
-        sprite.height = this.state.gridSize;
+        sprite.x = tile.col * this.state.scene.gridSize;
+        sprite.y = tile.row * this.state.scene.gridSize;
+        sprite.width = this.state.scene.gridSize;
+        sprite.height = this.state.scene.gridSize;
         sprite.alpha = layer.id === "collision" ? 0.45 : 1;
         sprite.zIndex = layer.id === "collision" ? -450 : -500;
         this.tileLayer.addChild(sprite);
       }
     }
+
+    this.lastTileLayerKey = allTexturesReady ? key : "";
   }
 
   private drawViewportBackground(): void {

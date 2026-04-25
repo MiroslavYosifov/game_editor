@@ -60,6 +60,7 @@ export function createExamplePlatformScene(heroAsset?: AssetSummary): Scene {
     name: "Sprite Maze Scene",
     width: 1280,
     height: 720,
+    gridSize: 32,
     tileMap: createTileMap(),
     updatedAt: new Date().toISOString(),
     objects: [

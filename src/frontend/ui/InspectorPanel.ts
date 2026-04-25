@@ -29,8 +29,7 @@ export class InspectorPanel {
 
     const object = this.state.selectedObject;
     if (!object) {
-      this.root.innerHTML = this.tileFields();
-      this.bindTileInputs();
+      this.root.innerHTML = `<h2>Properties</h2><p class="empty">Select an object to edit its properties.</p>`;
       return;
     }
 
@@ -213,7 +212,7 @@ export class InspectorPanel {
     });
 
     this.root.querySelectorAll<HTMLInputElement>("[data-tile-edit-mode]").forEach((input) => {
-      input.addEventListener("change", () => this.state.setTileEditMode(input.dataset.tileEditMode as "paint" | "erase"));
+      input.addEventListener("change", () => this.state.setTileEditMode(input.value as "paint" | "erase"));
     });
 
     this.root.querySelectorAll<HTMLButtonElement>("[data-tile-brush]").forEach((button) => {

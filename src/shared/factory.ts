@@ -2,6 +2,7 @@ import type { ObjectType, PhysicsProperties, Scene, SceneObject, TileMap } from 
 
 const DEFAULT_SCENE_WIDTH = 1280;
 const DEFAULT_SCENE_HEIGHT = 720;
+const DEFAULT_GRID_SIZE = 32;
 const DEFAULT_OBJECT_START = 120;
 const DEFAULT_OBJECT_STEP = 16;
 
@@ -33,19 +34,32 @@ export function createTileMap(): TileMap {
 }
 
 export function ensureSceneDefaults(scene: Scene | (Omit<Scene, "tileMap"> & { tileMap?: TileMap })): Scene {
+  const fallbackTileMap = createTileMap();
   const tileMap = scene.tileMap
     ? {
-        ...createTileMap(),
+        ...fallbackTileMap,
         ...scene.tileMap,
         layers: [
-          { ...createTileMap().layers[0], ...(scene.tileMap.layers?.find((layer) => layer.id === "visual") ?? {}) },
-          { ...createTileMap().layers[1], ...(scene.tileMap.layers?.find((layer) => layer.id === "collision") ?? {}) }
+          { ...fallbackTileMap.layers[0], ...(scene.tileMap.layers?.find((layer) => layer.id === "visual") ?? {}) },
+          { ...fallbackTileMap.layers[1], ...(scene.tileMap.layers?.find((layer) => layer.id === "collision") ?? {}) }
         ]
       }
-    : createTileMap();
+    : fallbackTileMap;
+
+  const frameLookup = new Map(tileMap.frames.map((frame) => [frame.name, frame]));
+  tileMap.layers = tileMap.layers.map((layer) => ({
+    ...layer,
+    tiles: layer.tiles.map((tile) => ({
+      ...tile,
+      assetId: tile.assetId ?? tileMap.tilesetAssetId,
+      imageUrl: tile.imageUrl ?? tileMap.imageUrl,
+      frame: tile.frame ?? frameLookup.get(tile.frameName) ?? { name: tile.frameName, x: 0, y: 0, w: 32, h: 32 }
+    }))
+  }));
 
   return {
     ...scene,
+    gridSize: Math.max(4, Math.min(256, Math.round(scene.gridSize ?? DEFAULT_GRID_SIZE))),
     tileMap
   };
 }
@@ -56,6 +70,7 @@ export function createScene(name = "Untitled Scene"): Scene {
     name,
     width: DEFAULT_SCENE_WIDTH,
     height: DEFAULT_SCENE_HEIGHT,
+    gridSize: DEFAULT_GRID_SIZE,
     objects: [],
     updatedAt: new Date().toISOString()
   });

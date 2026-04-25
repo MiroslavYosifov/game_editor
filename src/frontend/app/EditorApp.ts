@@ -214,7 +214,7 @@ export class EditorApp {
   private async loadScene(sceneId: string): Promise<void> {
     log.info("Loading scene", { sceneId });
     try {
-      const scene = await this.sceneApi.loadScene(sceneId);
+      const scene = await this.hydrateSceneTileset(await this.sceneApi.loadScene(sceneId));
       this.state.setScene(scene);
       log.info("Saved scene loaded", { id: scene.id, name: scene.name, objectCount: scene.objects.length });
       this.setStatus(`Loaded ${scene.name}`);
@@ -298,7 +298,7 @@ export class EditorApp {
     try {
       await this.sceneApi.deleteScene(sceneId);
       this.sceneSummaries = await this.sceneApi.listScenes();
-      const nextScene = this.sceneSummaries[0] ? await this.sceneApi.loadScene(this.sceneSummaries[0].id) : null;
+      const nextScene = this.sceneSummaries[0] ? await this.hydrateSceneTileset(await this.sceneApi.loadScene(this.sceneSummaries[0].id)) : null;
 
       if (nextScene) {
         this.state.setScene(nextScene);
@@ -318,7 +318,45 @@ export class EditorApp {
   private async loadInitialScene(): Promise<Scene | null> {
     const firstSummary = this.sceneSummaries[0];
     if (!firstSummary) return null;
-    return this.sceneApi.loadScene(firstSummary.id);
+    return this.hydrateSceneTileset(await this.sceneApi.loadScene(firstSummary.id));
+  }
+
+  private async hydrateSceneTileset(scene: Scene): Promise<Scene> {
+    const assetId = scene.tileMap.tilesetAssetId;
+    const asset = assetId
+      ? this.assetSummaries.find((item) => item.id === assetId && item.type === "spritesheet")
+      : undefined;
+    const sheetUrl = scene.tileMap.sheetUrl || asset?.sheetUrl || "";
+    const imageUrl = scene.tileMap.imageUrl || asset?.url || "";
+
+    if (!sheetUrl) return scene;
+
+    try {
+      const frames = await this.assetApi.loadTileFrames(sheetUrl);
+      const frameLookup = new Map(frames.map((frame) => [frame.name, frame]));
+      return {
+        ...scene,
+        tileMap: {
+          ...scene.tileMap,
+          imageUrl,
+          sheetUrl,
+          frames,
+          layers: scene.tileMap.layers.map((layer) => ({
+            ...layer,
+            tiles: layer.tiles.map((tile) => ({
+              ...tile,
+              assetId: tile.assetId || assetId || scene.tileMap.tilesetAssetId,
+              imageUrl: tile.imageUrl || imageUrl,
+              frame: tile.frame && tile.frame.w > 0 && tile.frame.h > 0 ? tile.frame : (frameLookup.get(tile.frameName) ?? tile.frame)
+            }))
+          })),
+          brushFrameName: scene.tileMap.brushFrameName || frames[0]?.name || ""
+        }
+      };
+    } catch (error) {
+      log.warn("Scene tileset hydration failed", { sceneId: scene.id, assetId, sheetUrl, error });
+      return scene;
+    }
   }
 
   private async selectTileset(assetId: string): Promise<void> {

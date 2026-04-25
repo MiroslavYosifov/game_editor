@@ -35,7 +35,10 @@ export interface TileFrame {
 export interface TileCell {
   col: number;
   row: number;
+  assetId: string;
+  imageUrl: string;
   frameName: string;
+  frame: TileFrame;
 }
 
 export interface TileLayer {
@@ -78,6 +81,7 @@ export interface Scene {
   name: string;
   width: number;
   height: number;
+  gridSize: number;
   tileMap: TileMap;
   objects: SceneObject[];
   updatedAt: string;

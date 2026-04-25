@@ -86,7 +86,7 @@ export class Toolbar {
           </label>
           <label class="toolbar-field">
             <span>Grid</span>
-            <input data-grid-size type="number" min="4" max="256" step="4" value="${this.state.gridSize}" />
+            <input data-grid-size type="number" min="4" max="256" step="4" value="${this.state.scene.gridSize}" />
           </label>
         </div>
         <div class="toolbar-group canvas-controls compact-grid-controls">

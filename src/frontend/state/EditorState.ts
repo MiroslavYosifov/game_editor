@@ -32,7 +32,6 @@ export class EditorState {
   scene: Scene = createScene("New Scene");
   selectedObjectIds: string[] = [];
   private clipboardObjects: SceneObject[] = [];
-  gridSize = 32;
   snapToGrid = false;
   toolMode: "select" | "tiles" = "select";
   tileEditMode: "paint" | "erase" = "paint";
@@ -89,12 +88,12 @@ export class EditorState {
 
   setGridSize(size: number): void {
     this.recordHistory();
-    this.gridSize = Math.max(4, Math.min(256, Math.round(size)));
+    this.scene = withUpdatedAt(this.scene, { gridSize: Math.max(4, Math.min(256, Math.round(size))) });
     this.emit();
   }
 
   previewGridSize(size: number): void {
-    this.gridSize = Math.max(4, Math.min(256, Math.round(size)));
+    this.scene = withUpdatedAt(this.scene, { gridSize: Math.max(4, Math.min(256, Math.round(size))) });
     this.emit();
   }
 
@@ -176,20 +175,35 @@ export class EditorState {
 
   paintTileAt(point: { x: number; y: number }): void {
     if (!this.scene.tileMap.tilesetAssetId || !this.scene.tileMap.brushFrameName) return;
-    const col = Math.floor(point.x / this.gridSize);
-    const row = Math.floor(point.y / this.gridSize);
+    const col = Math.floor(point.x / this.scene.gridSize);
+    const row = Math.floor(point.y / this.scene.gridSize);
     if (col < 0 || row < 0) return;
+    const brushFrame = this.scene.tileMap.frames.find((frame) => frame.name === this.scene.tileMap.brushFrameName);
+    if (!brushFrame || !this.scene.tileMap.imageUrl) return;
 
     const activeLayer = this.scene.tileMap.layers.find((layer) => layer.id === this.scene.tileMap.activeLayer);
     const existingTile = activeLayer?.tiles.find((tile) => tile.col === col && tile.row === row);
-    if (existingTile?.frameName === this.scene.tileMap.brushFrameName) return;
+    if (
+      existingTile?.assetId === this.scene.tileMap.tilesetAssetId &&
+      existingTile?.frameName === this.scene.tileMap.brushFrameName
+    ) return;
 
     const nextLayers = this.scene.tileMap.layers.map((layer) => {
       if (layer.id !== this.scene.tileMap.activeLayer) return layer;
       const withoutExisting = layer.tiles.filter((tile) => tile.col !== col || tile.row !== row);
       return {
         ...layer,
-        tiles: [...withoutExisting, { col, row, frameName: this.scene.tileMap.brushFrameName }]
+        tiles: [
+          ...withoutExisting,
+          {
+            col,
+            row,
+            assetId: this.scene.tileMap.tilesetAssetId,
+            imageUrl: this.scene.tileMap.imageUrl,
+            frameName: this.scene.tileMap.brushFrameName,
+            frame: brushFrame
+          }
+        ]
       };
     });
 
@@ -204,8 +218,8 @@ export class EditorState {
   }
 
   eraseTileAt(point: { x: number; y: number }): void {
-    const col = Math.floor(point.x / this.gridSize);
-    const row = Math.floor(point.y / this.gridSize);
+    const col = Math.floor(point.x / this.scene.gridSize);
+    const row = Math.floor(point.y / this.scene.gridSize);
     if (col < 0 || row < 0) return;
 
     const activeLayer = this.scene.tileMap.layers.find((layer) => layer.id === this.scene.tileMap.activeLayer);
@@ -233,7 +247,7 @@ export class EditorState {
 
   snapValue(value: number): number {
     if (!this.snapToGrid) return Math.round(value);
-    return Math.round(value / this.gridSize) * this.gridSize;
+    return Math.round(value / this.scene.gridSize) * this.scene.gridSize;
   }
 
   addObject(type: ObjectType): void {
@@ -295,7 +309,7 @@ export class EditorState {
   pasteObjects(): void {
     if (this.clipboardObjects.length === 0) return;
     this.recordHistory();
-    const copies = createPastedObjects(this.clipboardObjects, this.scene, (value) => this.snapValue(value), this.snapToGrid, this.gridSize);
+    const copies = createPastedObjects(this.clipboardObjects, this.scene, (value) => this.snapValue(value), this.snapToGrid, this.scene.gridSize);
 
     this.scene = {
       ...withUpdatedAt(this.scene, {}),
@@ -476,7 +490,6 @@ export class EditorState {
     return {
       scene: this.cloneScene(this.scene),
       selectedObjectIds: [...this.selectedObjectIds],
-      gridSize: this.gridSize,
       snapToGrid: this.snapToGrid
     };
   }
@@ -485,7 +498,6 @@ export class EditorState {
     this.isRestoringHistory = true;
     this.scene = this.cloneScene(snapshot.scene);
     this.selectedObjectIds = [...snapshot.selectedObjectIds];
-    this.gridSize = snapshot.gridSize;
     this.snapToGrid = snapshot.snapToGrid;
     this.isRestoringHistory = false;
     this.emit();

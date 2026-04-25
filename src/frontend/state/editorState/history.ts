@@ -3,7 +3,6 @@ import type { Scene } from "../../../shared/types";
 export interface HistorySnapshot {
   scene: Scene;
   selectedObjectIds: string[];
-  gridSize: number;
   snapToGrid: boolean;
 }
 
