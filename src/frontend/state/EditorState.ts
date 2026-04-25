@@ -34,7 +34,8 @@ export class EditorState {
   private clipboardObjects: SceneObject[] = [];
   gridSize = 32;
   snapToGrid = false;
-  toolMode: "object" | "tile-paint" | "tile-erase" = "object";
+  toolMode: "select" | "tiles" = "select";
+  tileEditMode: "paint" | "erase" = "paint";
 
   get selectedObjectId(): string | null {
     return this.selectedObjectIds[0] ?? null;
@@ -103,8 +104,13 @@ export class EditorState {
     this.emit();
   }
 
-  setToolMode(mode: "object" | "tile-paint" | "tile-erase"): void {
+  setToolMode(mode: "select" | "tiles"): void {
     this.toolMode = mode;
+    this.emit();
+  }
+
+  setTileEditMode(mode: "paint" | "erase"): void {
+    this.tileEditMode = mode;
     this.emit();
   }
 

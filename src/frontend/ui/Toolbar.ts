@@ -64,9 +64,8 @@ export class Toolbar {
         </div>
         <div class="toolbar-group compact-tools">
           <span class="tool-strip-label">Mode</span>
-          <button class="toolbar-btn compact-tool-btn ${this.state.toolMode === "object" ? "active" : ""}" data-tool-mode="object">Select</button>
-          <button class="toolbar-btn compact-tool-btn ${this.state.toolMode === "tile-paint" ? "active" : ""}" data-tool-mode="tile-paint">Paint</button>
-          <button class="toolbar-btn compact-tool-btn ${this.state.toolMode === "tile-erase" ? "active" : ""}" data-tool-mode="tile-erase">Erase</button>
+          <button class="toolbar-btn compact-tool-btn ${this.state.toolMode === "select" ? "active" : ""}" data-tool-mode="select">Select</button>
+          <button class="toolbar-btn compact-tool-btn ${this.state.toolMode === "tiles" ? "active" : ""}" data-tool-mode="tiles">Tiles</button>
         </div>
         <div class="toolbar-group compact-tools">
           <span class="tool-strip-label">Arrange</span>
@@ -112,7 +111,7 @@ export class Toolbar {
       button.addEventListener("click", () => this.state.addObject(button.dataset.add as ObjectType));
     });
     this.root.querySelectorAll<HTMLButtonElement>("[data-tool-mode]").forEach((button) => {
-      button.addEventListener("click", () => this.state.setToolMode(button.dataset.toolMode as "object" | "tile-paint" | "tile-erase"));
+      button.addEventListener("click", () => this.state.setToolMode(button.dataset.toolMode as "select" | "tiles"));
     });
     this.root.querySelectorAll<HTMLButtonElement>("[data-align]").forEach((button) => {
       button.addEventListener("click", () => this.state.alignSelected(button.dataset.align as "left" | "center" | "right" | "top" | "middle" | "bottom"));

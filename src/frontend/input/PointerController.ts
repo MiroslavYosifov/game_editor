@@ -100,12 +100,12 @@ export class PointerController {
       return;
     }
 
-    if (event.button === 0 && this.state.toolMode !== "object") {
+    if (event.button === 0 && this.state.toolMode === "tiles") {
       const point = this.toScenePoint(event);
       this.view.setPointerCapture(event.pointerId);
       this.dragMode = "tile-paint";
       this.state.beginHistoryBatch();
-      if (this.state.toolMode === "tile-paint") this.state.paintTileAt(point);
+      if (this.state.tileEditMode === "paint") this.state.paintTileAt(point);
       else this.state.eraseTileAt(point);
       return;
     }
@@ -184,7 +184,7 @@ export class PointerController {
 
     if (this.dragMode === "tile-paint") {
       const point = this.toScenePoint(event);
-      if (this.state.toolMode === "tile-paint") this.state.paintTileAt(point);
+      if (this.state.tileEditMode === "paint") this.state.paintTileAt(point);
       else this.state.eraseTileAt(point);
       return;
     }
@@ -282,12 +282,12 @@ export class PointerController {
       return;
     }
 
-    if (this.state.toolMode === "tile-paint") {
+    if (this.state.toolMode === "tiles" && this.state.tileEditMode === "paint") {
       this.view.style.cursor = "crosshair";
       return;
     }
 
-    if (this.state.toolMode === "tile-erase") {
+    if (this.state.toolMode === "tiles" && this.state.tileEditMode === "erase") {
       this.view.style.cursor = "cell";
       return;
     }

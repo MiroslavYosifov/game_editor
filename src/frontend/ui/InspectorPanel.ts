@@ -14,6 +14,12 @@ export class InspectorPanel {
   ) {}
 
   render(): void {
+    if (this.state.toolMode === "tiles") {
+      this.root.innerHTML = this.tileFields();
+      this.bindTileInputs();
+      return;
+    }
+
     if (this.state.selectedObjects.length > 1) {
       this.root.innerHTML = `<h2>Properties</h2><p class="empty">${this.state.selectedObjects.length} objects selected. Drag them in the scene to move them together.</p>`;
       return;
@@ -168,12 +174,38 @@ export class InspectorPanel {
     const tilesetSelect = this.root.querySelector<HTMLSelectElement>("[data-tileset-asset]");
     tilesetSelect?.addEventListener("change", () => void this.onSelectTileset(tilesetSelect.value));
 
+    this.root.querySelectorAll<HTMLButtonElement>("[data-tile-asset-pick]").forEach((button) => {
+      button.addEventListener("click", () => void this.onSelectTileset(button.dataset.tileAssetPick ?? ""));
+    });
+
+    this.root.querySelector<HTMLButtonElement>("[data-refresh-tile-assets]")?.addEventListener("click", () => void this.onRefreshAssets());
+    this.root.querySelector<HTMLButtonElement>("[data-delete-tile-asset]")?.addEventListener("click", () => {
+      if (tilesetSelect?.value) void this.onDeleteAsset(tilesetSelect.value);
+    });
+
+    const sheetImageInput = this.root.querySelector<HTMLInputElement>("[data-tile-sheet-image-file]");
+    const sheetJsonInput = this.root.querySelector<HTMLInputElement>("[data-tile-sheet-json-file]");
+    this.root.querySelector<HTMLButtonElement>("[data-upload-tile-sheet]")?.addEventListener("click", async () => {
+      const image = sheetImageInput?.files?.[0];
+      const json = sheetJsonInput?.files?.[0];
+      if (!image || !json) return;
+      const asset = await this.onUploadSpritesheet(image, json);
+      if (sheetImageInput) sheetImageInput.value = "";
+      if (sheetJsonInput) sheetJsonInput.value = "";
+      if (!asset) return;
+      await this.onSelectTileset(asset.id);
+    });
+
     this.root.querySelector<HTMLSelectElement>("[data-tile-layer]")?.addEventListener("change", (event) => {
       this.state.setTileLayer((event.target as HTMLSelectElement).value as "visual" | "collision");
     });
 
     this.root.querySelector<HTMLInputElement>("[data-collision-overlay]")?.addEventListener("change", (event) => {
       this.state.setCollisionOverlayVisible((event.target as HTMLInputElement).checked);
+    });
+
+    this.root.querySelectorAll<HTMLInputElement>("[data-tile-edit-mode]").forEach((input) => {
+      input.addEventListener("change", () => this.state.setTileEditMode(input.dataset.tileEditMode as "paint" | "erase"));
     });
 
     this.root.querySelectorAll<HTMLButtonElement>("[data-tile-brush]").forEach((button) => {
@@ -316,15 +348,33 @@ export class InspectorPanel {
   private tileFields(): string {
     const spritesheets = this.getAssets().filter((asset) => asset.type === "spritesheet");
     const tileMap = this.state.scene.tileMap;
+    const selectedTileset = spritesheets.find((asset) => asset.id === tileMap.tilesetAssetId);
     return `
       <h2>Tiles</h2>
-      <label class="field">
-        <span>Tileset</span>
-        <select data-tileset-asset>
-          <option value="">No tileset selected</option>
-          ${spritesheets.map((asset) => `<option value="${this.escape(asset.id)}" ${tileMap.tilesetAssetId === asset.id ? "selected" : ""}>${this.escape(asset.name)}</option>`).join("")}
-        </select>
-      </label>
+      <div class="asset-select-row">
+        <label class="field">
+          <span>Tileset</span>
+          <select data-tileset-asset>
+            <option value="">No tileset selected</option>
+            ${spritesheets.map((asset) => `<option value="${this.escape(asset.id)}" ${tileMap.tilesetAssetId === asset.id ? "selected" : ""}>${this.escape(asset.name)}</option>`).join("")}
+          </select>
+        </label>
+        <button type="button" class="asset-refresh" data-refresh-tile-assets title="Refresh tilesets" aria-label="Refresh tilesets">Refresh</button>
+        <button type="button" class="asset-delete" data-delete-tile-asset ${selectedTileset ? "" : "disabled"} title="Delete selected tileset" aria-label="Delete selected tileset">Delete</button>
+      </div>
+      ${this.tileAssetBrowser(spritesheets, selectedTileset)}
+      <div class="sheet-upload">
+        <strong>Tileset upload</strong>
+        <label class="field">
+          <span>Image PNG/JPG/WebP</span>
+          <input data-tile-sheet-image-file type="file" accept="image/png,image/jpeg,image/webp" />
+        </label>
+        <label class="field">
+          <span>JSON file</span>
+          <input data-tile-sheet-json-file type="file" accept="application/json,.json" />
+        </label>
+        <button type="button" data-upload-tile-sheet>Upload selected tileset</button>
+      </div>
       <div class="inspector-grid">
         <label class="field">
           <span>Layer</span>
@@ -338,8 +388,29 @@ export class InspectorPanel {
           <span>Show collision</span>
         </label>
       </div>
-      <p class="empty">Mode: ${this.state.toolMode === "object" ? "Select" : this.state.toolMode === "tile-paint" ? "Paint tiles" : "Erase tiles"}</p>
+      <div class="upload-mode tile-edit-mode">
+        <label><input type="radio" name="tile-edit-mode" data-tile-edit-mode value="paint" ${this.state.tileEditMode === "paint" ? "checked" : ""} /> Paint</label>
+        <label><input type="radio" name="tile-edit-mode" data-tile-edit-mode value="erase" ${this.state.tileEditMode === "erase" ? "checked" : ""} /> Erase</label>
+      </div>
+      <p class="empty">Paint or erase directly on the scene grid.</p>
       ${this.tilePalette(tileMap.imageUrl, tileMap.frames, tileMap.brushFrameName)}
+    `;
+  }
+
+  private tileAssetBrowser(assets: AssetSummary[], selectedAsset: AssetSummary | undefined): string {
+    if (!assets.length) return `<p class="empty">No uploaded tilesets yet.</p>`;
+    return `
+      <div class="asset-browser">
+        ${assets
+          .map(
+            (asset) => `
+              <button type="button" class="asset-card ${selectedAsset?.id === asset.id ? "selected" : ""}" data-tile-asset-pick="${this.escape(asset.id)}">
+                <img src="${this.escape(asset.url)}" alt="" title="${this.escape(asset.name)} - ${asset.frameNames?.length ?? 0} tiles" />
+              </button>
+            `
+          )
+          .join("")}
+      </div>
     `;
   }
 
