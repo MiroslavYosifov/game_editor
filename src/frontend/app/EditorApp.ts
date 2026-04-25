@@ -1,8 +1,7 @@
 import { createScene } from "../../shared/factory";
-import type { AssetSummary, SceneSummary } from "../../shared/types";
+import type { AssetSummary, Scene, SceneSummary } from "../../shared/types";
 import { AssetApi } from "../api/AssetApi";
 import { SceneApi } from "../api/SceneApi";
-import { createExamplePlatformScene } from "../examples/examplePlatformScene";
 import { PointerController } from "../input/PointerController";
 import { PixiRenderer } from "../rendering/PixiRenderer";
 import { EditorState } from "../state/EditorState";
@@ -49,6 +48,7 @@ export class EditorApp {
       this.state,
       () => this.sceneSummaries,
       (sceneId) => void this.loadScene(sceneId),
+      (sceneId) => void this.deleteScene(sceneId),
       () => void this.refreshScenes(),
       () => void this.saveScene(),
       () => this.createNewScene()
@@ -81,18 +81,22 @@ export class EditorApp {
       this.assetSummaries = [];
     }
 
-    this.state.setScene(createExamplePlatformScene(this.getPreferredHeroAsset()));
-    log.info("Default Sprite Maze scene loaded");
-    this.setStatus("Loaded Sprite Maze Scene");
-
     try {
       log.info("Loading saved scenes during boot");
       this.sceneSummaries = await this.sceneApi.listScenes();
       log.info("Boot scene list loaded", { count: this.sceneSummaries.length });
+      const firstScene = await this.loadInitialScene();
+      if (firstScene) {
+        this.state.setScene(firstScene);
+        log.info("Default saved scene loaded", { id: firstScene.id, name: firstScene.name });
+        this.setStatus(`Loaded ${firstScene.name}`);
+      } else {
+        this.setStatus("No saved scenes found. Create a new scene or import one.");
+      }
       this.toolbar.render();
     } catch (error) {
       log.warn("Boot scene list unavailable", error);
-      this.setStatus("Loaded Sprite Maze Scene. Backend unavailable until save is available.");
+      this.setStatus("Backend unavailable until saved scenes are available.");
     } finally {
       log.info("Boot finished", { durationMs: Math.round(performance.now() - startedAt) });
     }
@@ -101,10 +105,6 @@ export class EditorApp {
   private setStatus(message: string): void {
     log.info(`Status: ${message}`);
     this.shell.statusRoot.textContent = message;
-  }
-
-  private getPreferredHeroAsset(): AssetSummary | undefined {
-    return this.assetSummaries.find((asset) => asset.type === "spritesheet") ?? this.assetSummaries.find((asset) => asset.type === "image");
   }
 
   private async refreshAssets(): Promise<void> {
@@ -181,20 +181,13 @@ export class EditorApp {
       log.warn("Saved scene list unavailable", error);
       this.sceneSummaries = [];
       this.toolbar.render();
-      this.setStatus("Scene list unavailable. Example scene is still available.");
+      this.setStatus("Scene list unavailable.");
     }
   }
 
   private async loadScene(sceneId: string): Promise<void> {
     log.info("Loading scene", { sceneId });
     try {
-      if (sceneId === "example-snake-scene") {
-        this.state.setScene(createExamplePlatformScene(this.getPreferredHeroAsset()));
-        log.info("Built-in Sprite Maze scene loaded");
-        this.setStatus("Loaded Sprite Maze Scene");
-        return;
-      }
-
       const scene = await this.sceneApi.loadScene(sceneId);
       this.state.setScene(scene);
       log.info("Saved scene loaded", { id: scene.id, name: scene.name, objectCount: scene.objects.length });
@@ -223,5 +216,37 @@ export class EditorApp {
     log.info("Creating new scene");
     this.state.setScene(createScene("New Scene"));
     this.setStatus("Created new scene");
+  }
+
+  private async deleteScene(sceneId: string): Promise<void> {
+    const scene = this.sceneSummaries.find((item) => item.id === sceneId);
+    if (!sceneId || !scene) return;
+    if (!window.confirm(`Delete scene "${scene.name}"?`)) return;
+
+    log.info("Deleting scene", { id: sceneId, name: scene.name });
+    try {
+      await this.sceneApi.deleteScene(sceneId);
+      this.sceneSummaries = await this.sceneApi.listScenes();
+      const nextScene = this.sceneSummaries[0] ? await this.sceneApi.loadScene(this.sceneSummaries[0].id) : null;
+
+      if (nextScene) {
+        this.state.setScene(nextScene);
+        this.setStatus(`Deleted ${scene.name}. Loaded ${nextScene.name}`);
+      } else {
+        this.state.setScene(createScene("New Scene"));
+        this.setStatus(`Deleted ${scene.name}. No saved scenes left.`);
+      }
+
+      this.toolbar.render();
+    } catch (error) {
+      log.error("Scene delete failed", error);
+      this.setStatus(error instanceof Error ? error.message : "Delete failed");
+    }
+  }
+
+  private async loadInitialScene(): Promise<Scene | null> {
+    const firstSummary = this.sceneSummaries[0];
+    if (!firstSummary) return null;
+    return this.sceneApi.loadScene(firstSummary.id);
   }
 }

@@ -1,14 +1,13 @@
 import type { ObjectType, Scene, SceneSummary } from "../../shared/types";
 import { EditorState } from "../state/EditorState";
 
-const exampleSceneId = "example-snake-scene";
-
 export class Toolbar {
   constructor(
     private readonly root: HTMLElement,
     private readonly state: EditorState,
     private readonly getScenes: () => SceneSummary[],
     private readonly onLoadScene: (id: string) => void,
+    private readonly onDeleteScene: (id: string) => void,
     private readonly onRefreshScenes: () => void,
     private readonly onSave: () => void,
     private readonly onNewScene: () => void
@@ -27,9 +26,7 @@ export class Toolbar {
           <label class="toolbar-field scene-load-field">
             <span>Scene</span>
             <select data-load-scene>
-              <option value="${exampleSceneId}" ${this.state.scene.id === exampleSceneId ? "selected" : ""}>Sprite Maze Scene</option>
               ${this.getScenes()
-                .filter((scene) => scene.id !== exampleSceneId)
                 .map(
                   (scene) => `
                     <option value="${scene.id}" ${this.state.scene.id === scene.id ? "selected" : ""}>
@@ -37,10 +34,11 @@ export class Toolbar {
                     </option>
                   `
                 )
-                .join("")}
+                .join("") || '<option value="">No saved scenes</option>'}
             </select>
           </label>
           <button class="toolbar-btn" data-action="load-scene">Load</button>
+          <button class="toolbar-btn btn-danger" data-action="delete-scene">Delete</button>
           <button class="toolbar-btn" data-action="refresh-scenes">Refresh</button>
         </div>
         <div class="toolbar-group">
@@ -92,6 +90,10 @@ export class Toolbar {
     this.root.querySelector<HTMLButtonElement>('[data-action="load-scene"]')?.addEventListener("click", () => {
       const sceneId = this.root.querySelector<HTMLSelectElement>("[data-load-scene]")?.value;
       if (sceneId) this.onLoadScene(sceneId);
+    });
+    this.root.querySelector<HTMLButtonElement>('[data-action="delete-scene"]')?.addEventListener("click", () => {
+      const sceneId = this.root.querySelector<HTMLSelectElement>("[data-load-scene]")?.value;
+      if (sceneId) this.onDeleteScene(sceneId);
     });
     this.root.querySelector<HTMLButtonElement>('[data-action="refresh-scenes"]')?.addEventListener("click", this.onRefreshScenes);
     this.root.querySelector<HTMLButtonElement>('[data-action="undo"]')?.addEventListener("click", () => this.state.undo());

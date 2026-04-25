@@ -17,4 +17,10 @@ export class SceneApi {
       body: JSON.stringify(scene)
     });
   }
+
+  async deleteScene(id: string): Promise<void> {
+    return requestJson<void>(`/api/scenes/${id}`, {
+      method: "DELETE"
+    });
+  }
 }
