@@ -1,13 +1,26 @@
-import { createId, createScene, createSceneObject } from "../../shared/factory";
+import { createScene, createSceneObject } from "../../shared/factory";
 import type { ObjectType, Scene, SceneObject } from "../../shared/types";
+import { createClipboard, createPastedObjects } from "./editorState/clipboard";
+import {
+  pushHistorySnapshot,
+  shouldRecordHistory,
+  takeRedoSnapshot,
+  takeUndoSnapshot,
+  type HistorySnapshot
+} from "./editorState/history";
+import {
+  clampSceneDimension,
+  cloneObject,
+  cloneScene,
+  patchObject,
+  patchObjects,
+  removeObject,
+  removeObjects,
+  sortByZIndex,
+  withUpdatedAt
+} from "./editorState/sceneMutations";
 
 type Listener = () => void;
-interface HistorySnapshot {
-  scene: Scene;
-  selectedObjectIds: string[];
-  gridSize: number;
-  snapToGrid: boolean;
-}
 
 export class EditorState {
   private listeners = new Set<Listener>();
@@ -39,7 +52,7 @@ export class EditorState {
     this.recordHistory();
     this.scene = {
       ...scene,
-      objects: [...scene.objects].sort((a, b) => a.zIndex - b.zIndex)
+      objects: sortByZIndex(scene.objects)
     };
     this.selectedObjectIds = this.scene.objects[0] ? [this.scene.objects[0].id] : [];
     this.emit();
@@ -47,28 +60,28 @@ export class EditorState {
 
   setSceneName(name: string): void {
     this.recordHistory();
-    this.scene = { ...this.scene, name, updatedAt: new Date().toISOString() };
+    this.scene = withUpdatedAt(this.scene, { name });
     this.emit();
   }
 
   setSceneSize(size: Partial<Pick<Scene, "width" | "height">>): void {
-    const width = this.clampSceneDimension(size.width ?? this.scene.width);
-    const height = this.clampSceneDimension(size.height ?? this.scene.height);
+    const width = clampSceneDimension(size.width ?? this.scene.width);
+    const height = clampSceneDimension(size.height ?? this.scene.height);
     if (width === this.scene.width && height === this.scene.height) return;
     this.recordHistory();
-    this.scene = { ...this.scene, width, height, updatedAt: new Date().toISOString() };
+    this.scene = withUpdatedAt(this.scene, { width, height });
     this.emit();
   }
 
   previewSceneSize(size: Partial<Pick<Scene, "width" | "height">>): void {
-    const width = this.clampSceneDimension(size.width ?? this.scene.width);
-    const height = this.clampSceneDimension(size.height ?? this.scene.height);
-    this.scene = { ...this.scene, width, height, updatedAt: new Date().toISOString() };
+    const width = clampSceneDimension(size.width ?? this.scene.width);
+    const height = clampSceneDimension(size.height ?? this.scene.height);
+    this.scene = withUpdatedAt(this.scene, { width, height });
     this.emit();
   }
 
   previewSceneName(name: string): void {
-    this.scene = { ...this.scene, name, updatedAt: new Date().toISOString() };
+    this.scene = withUpdatedAt(this.scene, { name });
     this.emit();
   }
 
@@ -98,9 +111,8 @@ export class EditorState {
     this.recordHistory();
     const object = createSceneObject(type, this.scene.objects.length + 1);
     this.scene = {
-      ...this.scene,
-      objects: [...this.scene.objects, object],
-      updatedAt: new Date().toISOString()
+      ...withUpdatedAt(this.scene, {}),
+      objects: [...this.scene.objects, object]
     };
     this.selectedObjectIds = [object.id];
     this.emit();
@@ -121,11 +133,7 @@ export class EditorState {
     if (this.selectedObjectIds.length === 0) return;
     this.recordHistory();
     const selectedIds = new Set(this.selectedObjectIds);
-    this.scene = {
-      ...this.scene,
-      objects: this.scene.objects.filter((object) => !selectedIds.has(object.id)),
-      updatedAt: new Date().toISOString()
-    };
+    this.scene = removeObjects(this.scene, selectedIds);
     this.selectedObjectIds = [];
     this.emit();
   }
@@ -133,23 +141,19 @@ export class EditorState {
   deleteObject(id: string): void {
     if (!this.getObject(id)) return;
     this.recordHistory();
-    this.scene = {
-      ...this.scene,
-      objects: this.scene.objects.filter((object) => object.id !== id),
-      updatedAt: new Date().toISOString()
-    };
+    this.scene = removeObject(this.scene, id);
     this.selectedObjectIds = this.selectedObjectIds.filter((selectedId) => selectedId !== id);
     this.emit();
   }
 
   copySelected(): void {
-    this.clipboardObjects = this.selectedObjects.map((object) => this.cloneObject(object));
+    this.clipboardObjects = createClipboard(this.selectedObjects);
   }
 
   copyObject(id: string): void {
     const object = this.getObject(id);
     if (!object) return;
-    this.clipboardObjects = [this.cloneObject(object)];
+    this.clipboardObjects = createClipboard([object]);
     this.selectedObjectIds = [id];
     this.emit();
   }
@@ -162,24 +166,14 @@ export class EditorState {
   pasteObjects(): void {
     if (this.clipboardObjects.length === 0) return;
     this.recordHistory();
-    const offset = this.snapToGrid ? this.gridSize : 20;
-    const maxZ = this.scene.objects.reduce((max, object) => Math.max(max, object.zIndex), 0);
-    const copies = this.clipboardObjects.map((object, index) => ({
-      ...object,
-      id: createId("object"),
-      name: `${object.name} Copy`,
-      x: this.snapValue(object.x + offset),
-      y: this.snapValue(object.y + offset),
-      zIndex: maxZ + index + 1
-    }));
+    const copies = createPastedObjects(this.clipboardObjects, this.scene, (value) => this.snapValue(value), this.snapToGrid, this.gridSize);
 
     this.scene = {
-      ...this.scene,
-      objects: [...this.scene.objects, ...copies].sort((a, b) => a.zIndex - b.zIndex),
-      updatedAt: new Date().toISOString()
+      ...withUpdatedAt(this.scene, {}),
+      objects: sortByZIndex([...this.scene.objects, ...copies])
     };
     this.selectedObjectIds = copies.map((object) => object.id);
-    this.clipboardObjects = copies.map((object) => this.cloneObject(object));
+    this.clipboardObjects = createClipboard(copies);
     this.emit();
   }
 
@@ -191,30 +185,14 @@ export class EditorState {
   updateObject(id: string, patch: Partial<SceneObject>): void {
     if (!this.getObject(id)) return;
     this.recordHistory();
-    this.scene = {
-      ...this.scene,
-      objects: this.scene.objects
-        .map((object) => (object.id === id ? { ...object, ...patch } : object))
-        .sort((a, b) => a.zIndex - b.zIndex),
-      updatedAt: new Date().toISOString()
-    };
+    this.scene = patchObject(this.scene, id, patch);
     this.emit();
   }
 
   updateObjects(patches: Array<{ id: string; patch: Partial<SceneObject> }>): void {
     if (patches.length === 0) return;
     this.recordHistory();
-    const patchById = new Map(patches.map((item) => [item.id, item.patch]));
-    this.scene = {
-      ...this.scene,
-      objects: this.scene.objects
-        .map((object) => {
-          const patch = patchById.get(object.id);
-          return patch ? { ...object, ...patch } : object;
-        })
-        .sort((a, b) => a.zIndex - b.zIndex),
-      updatedAt: new Date().toISOString()
-    };
+    this.scene = patchObjects(this.scene, patches);
     this.emit();
   }
 
@@ -264,16 +242,14 @@ export class EditorState {
   }
 
   undo(): void {
-    const snapshot = this.undoStack.pop();
+    const snapshot = takeUndoSnapshot(this.undoStack, this.redoStack, this.createSnapshot());
     if (!snapshot) return;
-    this.redoStack.push(this.createSnapshot());
     this.restoreSnapshot(snapshot);
   }
 
   redo(): void {
-    const snapshot = this.redoStack.pop();
+    const snapshot = takeRedoSnapshot(this.undoStack, this.redoStack, this.createSnapshot());
     if (!snapshot) return;
-    this.undoStack.push(this.createSnapshot());
     this.restoreSnapshot(snapshot);
   }
 
@@ -290,12 +266,16 @@ export class EditorState {
   }
 
   private recordHistory(): void {
-    if (this.isRestoringHistory) return;
-    if (this.isBatchingHistory && this.hasBatchHistory) return;
-
-    this.undoStack.push(this.createSnapshot());
-    if (this.undoStack.length > 100) this.undoStack.shift();
-    this.redoStack.length = 0;
+    if (
+      !shouldRecordHistory({
+        isRestoringHistory: this.isRestoringHistory,
+        isBatchingHistory: this.isBatchingHistory,
+        hasBatchHistory: this.hasBatchHistory
+      })
+    ) {
+      return;
+    }
+    pushHistorySnapshot(this.undoStack, this.redoStack, this.createSnapshot());
     this.hasBatchHistory = true;
   }
 
@@ -319,25 +299,14 @@ export class EditorState {
   }
 
   private cloneScene(scene: Scene): Scene {
-    return {
-      ...scene,
-      objects: scene.objects.map((object) => this.cloneObject(object))
-    };
+    return cloneScene(scene);
   }
 
   private cloneObject(object: SceneObject): SceneObject {
-    return {
-      ...object,
-      sprite: object.sprite ? { ...object.sprite } : undefined,
-      physics: {
-        ...object.physics,
-        gravity: { ...object.physics.gravity },
-        velocity: { ...object.physics.velocity }
-      }
-    };
+    return cloneObject(object);
   }
 
   private clampSceneDimension(value: number): number {
-    return Math.max(64, Math.min(8192, Math.round(value)));
+    return clampSceneDimension(value);
   }
 }
