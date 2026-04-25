@@ -143,13 +143,13 @@ export class EditorState {
   }
 
   copySelected(): void {
-    this.clipboardObjects = this.selectedObjects.map((object) => ({ ...object, physics: { ...object.physics, gravity: { ...object.physics.gravity }, velocity: { ...object.physics.velocity } } }));
+    this.clipboardObjects = this.selectedObjects.map((object) => this.cloneObject(object));
   }
 
   copyObject(id: string): void {
     const object = this.getObject(id);
     if (!object) return;
-    this.clipboardObjects = [{ ...object, physics: { ...object.physics, gravity: { ...object.physics.gravity }, velocity: { ...object.physics.velocity } } }];
+    this.clipboardObjects = [this.cloneObject(object)];
     this.selectedObjectIds = [id];
     this.emit();
   }
@@ -170,12 +170,7 @@ export class EditorState {
       name: `${object.name} Copy`,
       x: this.snapValue(object.x + offset),
       y: this.snapValue(object.y + offset),
-      zIndex: maxZ + index + 1,
-      physics: {
-        ...object.physics,
-        gravity: { ...object.physics.gravity },
-        velocity: { ...object.physics.velocity }
-      }
+      zIndex: maxZ + index + 1
     }));
 
     this.scene = {
@@ -184,7 +179,7 @@ export class EditorState {
       updatedAt: new Date().toISOString()
     };
     this.selectedObjectIds = copies.map((object) => object.id);
-    this.clipboardObjects = copies.map((object) => ({ ...object, physics: { ...object.physics, gravity: { ...object.physics.gravity }, velocity: { ...object.physics.velocity } } }));
+    this.clipboardObjects = copies.map((object) => this.cloneObject(object));
     this.emit();
   }
 
@@ -326,14 +321,19 @@ export class EditorState {
   private cloneScene(scene: Scene): Scene {
     return {
       ...scene,
-      objects: scene.objects.map((object) => ({
-        ...object,
-        physics: {
-          ...object.physics,
-          gravity: { ...object.physics.gravity },
-          velocity: { ...object.physics.velocity }
-        }
-      }))
+      objects: scene.objects.map((object) => this.cloneObject(object))
+    };
+  }
+
+  private cloneObject(object: SceneObject): SceneObject {
+    return {
+      ...object,
+      sprite: object.sprite ? { ...object.sprite } : undefined,
+      physics: {
+        ...object.physics,
+        gravity: { ...object.physics.gravity },
+        velocity: { ...object.physics.velocity }
+      }
     };
   }
 
