@@ -2,7 +2,7 @@ import { PixiRenderer, type ResizeHandle } from "../rendering/PixiRenderer";
 import { EditorState } from "../state/EditorState";
 import type { SceneObject } from "../../shared/types";
 
-type DragMode = "move" | "resize" | "select" | "pan" | null;
+type DragMode = "move" | "resize" | "select" | "pan" | "tile-paint" | null;
 type ObjectStart = Pick<SceneObject, "id" | "x" | "y" | "width" | "height">;
 
 export class PointerController {
@@ -100,6 +100,16 @@ export class PointerController {
       return;
     }
 
+    if (event.button === 0 && this.state.toolMode !== "object") {
+      const point = this.toScenePoint(event);
+      this.view.setPointerCapture(event.pointerId);
+      this.dragMode = "tile-paint";
+      this.state.beginHistoryBatch();
+      if (this.state.toolMode === "tile-paint") this.state.paintTileAt(point);
+      else this.state.eraseTileAt(point);
+      return;
+    }
+
     const point = this.toScenePoint(event);
     const control = this.renderer.hitSelectionControl(point);
 
@@ -169,6 +179,13 @@ export class PointerController {
       const point = this.toViewportPoint(event);
       this.renderer.panBy(point.x - this.viewportDragStart.x, point.y - this.viewportDragStart.y);
       this.viewportDragStart = point;
+      return;
+    }
+
+    if (this.dragMode === "tile-paint") {
+      const point = this.toScenePoint(event);
+      if (this.state.toolMode === "tile-paint") this.state.paintTileAt(point);
+      else this.state.eraseTileAt(point);
       return;
     }
 
@@ -262,6 +279,16 @@ export class PointerController {
 
     if (this.isSpacePressed) {
       this.view.style.cursor = "grab";
+      return;
+    }
+
+    if (this.state.toolMode === "tile-paint") {
+      this.view.style.cursor = "crosshair";
+      return;
+    }
+
+    if (this.state.toolMode === "tile-erase") {
+      this.view.style.cursor = "cell";
       return;
     }
 

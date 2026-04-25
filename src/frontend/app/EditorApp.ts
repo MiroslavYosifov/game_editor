@@ -42,7 +42,8 @@ export class EditorApp {
       (file) => this.uploadImageAsset(file),
       (image, json) => this.uploadSpritesheetAsset(image, json),
       () => this.refreshAssets(),
-      (assetId) => void this.deleteAsset(assetId)
+      (assetId) => void this.deleteAsset(assetId),
+      (assetId) => void this.selectTileset(assetId)
     );
     this.toolbar = new Toolbar(
       this.shell.toolbarRoot,
@@ -176,6 +177,7 @@ export class EditorApp {
       await this.assetApi.deleteAsset(assetId);
       this.assetSummaries = this.assetSummaries.filter((item) => item.id !== assetId);
       this.detachDeletedAssetFromScene(assetId);
+      if (this.state.scene.tileMap.tilesetAssetId === assetId) this.state.clearTileset();
       this.inspector.render();
       this.setStatus(`Deleted asset ${asset.name}`);
     } catch (error) {
@@ -317,6 +319,26 @@ export class EditorApp {
     const firstSummary = this.sceneSummaries[0];
     if (!firstSummary) return null;
     return this.sceneApi.loadScene(firstSummary.id);
+  }
+
+  private async selectTileset(assetId: string): Promise<void> {
+    if (!assetId) {
+      this.state.clearTileset();
+      this.setStatus("Tileset cleared");
+      return;
+    }
+
+    const asset = this.assetSummaries.find((item) => item.id === assetId && item.type === "spritesheet");
+    if (!asset?.sheetUrl) return;
+
+    try {
+      const frames = await this.assetApi.loadTileFrames(asset.sheetUrl);
+      this.state.setTileset(asset, frames);
+      this.setStatus(`Tileset selected: ${asset.name}`);
+    } catch (error) {
+      log.error("Tileset load failed", error);
+      this.setStatus(error instanceof Error ? error.message : "Tileset load failed");
+    }
   }
 
   private detachDeletedAssetFromScene(assetId: string): void {

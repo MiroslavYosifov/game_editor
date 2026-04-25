@@ -1,4 +1,4 @@
-import type { AssetSummary, PhysicsMode, SceneObject } from "../../shared/types";
+import type { AssetSummary, PhysicsMode, SceneObject, TileFrame } from "../../shared/types";
 import { EditorState } from "../state/EditorState";
 
 export class InspectorPanel {
@@ -9,7 +9,8 @@ export class InspectorPanel {
     private readonly onUploadImage: (file: File) => Promise<AssetSummary | null> = async () => null,
     private readonly onUploadSpritesheet: (image: File, json: File) => Promise<AssetSummary | null> = async () => null,
     private readonly onRefreshAssets: () => Promise<void> | void = () => undefined,
-    private readonly onDeleteAsset: (id: string) => Promise<void> | void = () => undefined
+    private readonly onDeleteAsset: (id: string) => Promise<void> | void = () => undefined,
+    private readonly onSelectTileset: (id: string) => Promise<void> | void = () => undefined
   ) {}
 
   render(): void {
@@ -20,7 +21,8 @@ export class InspectorPanel {
 
     const object = this.state.selectedObject;
     if (!object) {
-      this.root.innerHTML = `<h2>Properties</h2><p class="empty">Select an object to edit its properties.</p>`;
+      this.root.innerHTML = this.tileFields();
+      this.bindTileInputs();
       return;
     }
 
@@ -162,6 +164,23 @@ export class InspectorPanel {
     });
   }
 
+  private bindTileInputs(): void {
+    const tilesetSelect = this.root.querySelector<HTMLSelectElement>("[data-tileset-asset]");
+    tilesetSelect?.addEventListener("change", () => void this.onSelectTileset(tilesetSelect.value));
+
+    this.root.querySelector<HTMLSelectElement>("[data-tile-layer]")?.addEventListener("change", (event) => {
+      this.state.setTileLayer((event.target as HTMLSelectElement).value as "visual" | "collision");
+    });
+
+    this.root.querySelector<HTMLInputElement>("[data-collision-overlay]")?.addEventListener("change", (event) => {
+      this.state.setCollisionOverlayVisible((event.target as HTMLInputElement).checked);
+    });
+
+    this.root.querySelectorAll<HTMLButtonElement>("[data-tile-brush]").forEach((button) => {
+      button.addEventListener("click", () => this.state.setTileBrush(button.dataset.tileBrush ?? ""));
+    });
+  }
+
   private attachAsset(object: SceneObject, asset: AssetSummary | undefined): void {
     const current = object.sprite ?? this.defaultSprite();
     this.state.updateObject(object.id, {
@@ -291,6 +310,71 @@ export class InspectorPanel {
         <input type="checkbox" data-sprite-prop="playing" ${sprite.playing ? "checked" : ""} />
         <span>Play animation</span>
       </label>
+    `;
+  }
+
+  private tileFields(): string {
+    const spritesheets = this.getAssets().filter((asset) => asset.type === "spritesheet");
+    const tileMap = this.state.scene.tileMap;
+    return `
+      <h2>Tiles</h2>
+      <label class="field">
+        <span>Tileset</span>
+        <select data-tileset-asset>
+          <option value="">No tileset selected</option>
+          ${spritesheets.map((asset) => `<option value="${this.escape(asset.id)}" ${tileMap.tilesetAssetId === asset.id ? "selected" : ""}>${this.escape(asset.name)}</option>`).join("")}
+        </select>
+      </label>
+      <div class="inspector-grid">
+        <label class="field">
+          <span>Layer</span>
+          <select data-tile-layer>
+            <option value="visual" ${tileMap.activeLayer === "visual" ? "selected" : ""}>Visual</option>
+            <option value="collision" ${tileMap.activeLayer === "collision" ? "selected" : ""}>Collision</option>
+          </select>
+        </label>
+        <label class="checkbox-field tile-overlay-toggle">
+          <input type="checkbox" data-collision-overlay ${tileMap.showCollisionOverlay ? "checked" : ""} />
+          <span>Show collision</span>
+        </label>
+      </div>
+      <p class="empty">Mode: ${this.state.toolMode === "object" ? "Select" : this.state.toolMode === "tile-paint" ? "Paint tiles" : "Erase tiles"}</p>
+      ${this.tilePalette(tileMap.imageUrl, tileMap.frames, tileMap.brushFrameName)}
+    `;
+  }
+
+  private tilePalette(imageUrl: string, frames: TileFrame[], selectedFrameName: string): string {
+    if (!imageUrl || frames.length === 0) return `<p class="empty">Choose a spritesheet tileset to start painting on the grid.</p>`;
+    const sheetWidth = Math.max(...frames.map((frame) => frame.x + frame.w));
+    const sheetHeight = Math.max(...frames.map((frame) => frame.y + frame.h));
+
+    return `
+      <div class="tile-palette">
+        ${frames
+          .map((frame) => {
+            const scale = 32 / Math.max(frame.w, frame.h);
+            return `
+              <button
+                type="button"
+                class="tile-swatch ${selectedFrameName === frame.name ? "selected" : ""}"
+                data-tile-brush="${this.escape(frame.name)}"
+                title="${this.escape(frame.name)}"
+              >
+                <span
+                  class="tile-swatch-preview"
+                  style="
+                    width:${Math.round(frame.w * scale)}px;
+                    height:${Math.round(frame.h * scale)}px;
+                    background-image:url('${this.escape(imageUrl)}');
+                    background-position:${-frame.x * scale}px ${-frame.y * scale}px;
+                    background-size:${sheetWidth * scale}px ${sheetHeight * scale}px;
+                  "
+                ></span>
+              </button>
+            `;
+          })
+          .join("")}
+      </div>
     `;
   }
 

@@ -1,3 +1,4 @@
+import { createTileMap } from "../../shared/factory";
 import type { AssetSummary, ObjectType, PhysicsMode, Scene, SceneObject } from "../../shared/types";
 
 const object = (
@@ -59,6 +60,7 @@ export function createExamplePlatformScene(heroAsset?: AssetSummary): Scene {
     name: "Sprite Maze Scene",
     width: 1280,
     height: 720,
+    tileMap: createTileMap(),
     updatedAt: new Date().toISOString(),
     objects: [
       object("maze-bg", "rectangle", "Dark Background", 0, 0, 1280, 720, "#0f172a", 1, false),

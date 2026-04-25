@@ -1,4 +1,4 @@
-import type { ObjectType, PhysicsProperties, Scene, SceneObject } from "./types";
+import type { ObjectType, PhysicsProperties, Scene, SceneObject, TileMap } from "./types";
 
 const DEFAULT_SCENE_WIDTH = 1280;
 const DEFAULT_SCENE_HEIGHT = 720;
@@ -16,15 +16,49 @@ const defaultPhysics = (): PhysicsProperties => ({
 export const createId = (prefix: string): string =>
   `${prefix}-${globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2)}`;
 
-export function createScene(name = "Untitled Scene"): Scene {
+export function createTileMap(): TileMap {
   return {
+    tilesetAssetId: "",
+    imageUrl: "",
+    sheetUrl: "",
+    frames: [],
+    brushFrameName: "",
+    activeLayer: "visual",
+    showCollisionOverlay: true,
+    layers: [
+      { id: "visual", name: "Visual", visible: true, tiles: [] },
+      { id: "collision", name: "Collision", visible: true, tiles: [] }
+    ]
+  };
+}
+
+export function ensureSceneDefaults(scene: Scene | (Omit<Scene, "tileMap"> & { tileMap?: TileMap })): Scene {
+  const tileMap = scene.tileMap
+    ? {
+        ...createTileMap(),
+        ...scene.tileMap,
+        layers: [
+          { ...createTileMap().layers[0], ...(scene.tileMap.layers?.find((layer) => layer.id === "visual") ?? {}) },
+          { ...createTileMap().layers[1], ...(scene.tileMap.layers?.find((layer) => layer.id === "collision") ?? {}) }
+        ]
+      }
+    : createTileMap();
+
+  return {
+    ...scene,
+    tileMap
+  };
+}
+
+export function createScene(name = "Untitled Scene"): Scene {
+  return ensureSceneDefaults({
     id: createId("scene"),
     name,
     width: DEFAULT_SCENE_WIDTH,
     height: DEFAULT_SCENE_HEIGHT,
     objects: [],
     updatedAt: new Date().toISOString()
-  };
+  });
 }
 
 export function createSceneObject(type: ObjectType, index: number): SceneObject {

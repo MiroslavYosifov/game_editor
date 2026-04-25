@@ -464,6 +464,35 @@ h3 {
   padding-bottom: 4px;
 }
 
+.tile-palette {
+  display: grid;
+  gap: 6px;
+  grid-template-columns: repeat(auto-fill, minmax(38px, 1fr));
+}
+
+.tile-swatch {
+  align-items: center;
+  display: inline-flex;
+  height: 38px;
+  justify-content: center;
+  padding: 2px;
+  width: 38px;
+}
+
+.tile-swatch-preview {
+  background-repeat: no-repeat;
+  image-rendering: pixelated;
+}
+
+.tile-swatch.selected {
+  background: #111827;
+  border-color: #111827;
+}
+
+.tile-overlay-toggle {
+  margin-top: 24px;
+}
+
 .asset-card {
   align-items: center;
   display: inline-flex;

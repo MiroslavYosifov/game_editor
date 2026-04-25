@@ -1,3 +1,4 @@
+import { createTileMap } from "../../../shared/factory";
 import type { Scene, SceneObject } from "../../../shared/types";
 
 export function sortByZIndex(objects: SceneObject[]): SceneObject[] {
@@ -19,6 +20,14 @@ export function cloneObject(object: SceneObject): SceneObject {
 export function cloneScene(scene: Scene): Scene {
   return {
     ...scene,
+    tileMap: {
+      ...(scene.tileMap ?? createTileMap()),
+      frames: [...(scene.tileMap?.frames ?? [])],
+      layers: (scene.tileMap?.layers ?? createTileMap().layers).map((layer) => ({
+        ...layer,
+        tiles: layer.tiles.map((tile) => ({ ...tile }))
+      }))
+    },
     objects: scene.objects.map((object) => cloneObject(object))
   };
 }

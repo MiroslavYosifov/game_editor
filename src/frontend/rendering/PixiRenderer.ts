@@ -5,6 +5,7 @@ import { Camera2D } from "./Camera2D";
 import { containsPoint, getWorldBounds, intersectsRect, isNear, toLocalPoint } from "./geometry";
 import { SelectionOverlayRenderer } from "./SelectionOverlayRenderer";
 import { SpriteAssetCache } from "./SpriteAssetCache";
+import { TilesetTextureCache } from "./TilesetTextureCache";
 
 export type SelectionControl =
   | { type: "resize"; handle: ResizeHandle };
@@ -17,6 +18,7 @@ export class PixiRenderer {
   private readonly world = new Container();
   private readonly handleSize = 12;
   private readonly spriteAssetCache = new SpriteAssetCache();
+  private readonly tilesetTextureCache = new TilesetTextureCache();
   private readonly selectionOverlayRenderer = new SelectionOverlayRenderer();
   private readonly camera = new Camera2D();
 
@@ -112,6 +114,7 @@ export class PixiRenderer {
     this.drawViewportBackground();
     this.drawBackground();
     this.drawSceneBounds();
+    this.drawTileLayers();
     for (const object of this.state.scene.objects) {
       if (object.hidden) continue;
       this.drawObject(object);
@@ -196,6 +199,32 @@ export class PixiRenderer {
     bounds.lineStyle(2, 0x1f2937, 1);
     bounds.drawRect(0, 0, this.state.scene.width, this.state.scene.height);
     this.world.addChild(bounds);
+  }
+
+  private drawTileLayers(): void {
+    const tileMap = this.state.scene.tileMap;
+    if (!tileMap.tilesetAssetId || !tileMap.imageUrl || tileMap.frames.length === 0) return;
+
+    const textures = this.tilesetTextureCache.get(tileMap, () => this.render());
+    if (!textures) return;
+
+    for (const layer of tileMap.layers) {
+      if (!layer.visible) continue;
+      if (layer.id === "collision" && !tileMap.showCollisionOverlay) continue;
+
+      for (const tile of layer.tiles) {
+        const texture = textures.get(tile.frameName);
+        if (!texture) continue;
+        const sprite = new Sprite(texture);
+        sprite.x = tile.col * this.state.gridSize;
+        sprite.y = tile.row * this.state.gridSize;
+        sprite.width = this.state.gridSize;
+        sprite.height = this.state.gridSize;
+        sprite.alpha = layer.id === "collision" ? 0.45 : 1;
+        sprite.zIndex = layer.id === "collision" ? -450 : -500;
+        this.world.addChild(sprite);
+      }
+    }
   }
 
   private drawObject(object: SceneObject): void {

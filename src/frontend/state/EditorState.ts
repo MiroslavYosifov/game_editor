@@ -1,5 +1,5 @@
-import { createScene, createSceneObject } from "../../shared/factory";
-import type { ObjectType, Scene, SceneObject } from "../../shared/types";
+import { createScene, createSceneObject, ensureSceneDefaults } from "../../shared/factory";
+import type { AssetSummary, ObjectType, Scene, SceneObject, TileFrame, TileLayer, TileMap } from "../../shared/types";
 import { createClipboard, createPastedObjects } from "./editorState/clipboard";
 import {
   pushHistorySnapshot,
@@ -34,6 +34,7 @@ export class EditorState {
   private clipboardObjects: SceneObject[] = [];
   gridSize = 32;
   snapToGrid = false;
+  toolMode: "object" | "tile-paint" | "tile-erase" = "object";
 
   get selectedObjectId(): string | null {
     return this.selectedObjectIds[0] ?? null;
@@ -51,7 +52,7 @@ export class EditorState {
   setScene(scene: Scene): void {
     this.recordHistory();
     this.scene = {
-      ...scene,
+      ...ensureSceneDefaults(scene),
       objects: sortByZIndex(scene.objects)
     };
     this.selectedObjectIds = this.scene.objects[0] ? [this.scene.objects[0].id] : [];
@@ -99,6 +100,120 @@ export class EditorState {
   setSnapToGrid(enabled: boolean): void {
     this.recordHistory();
     this.snapToGrid = enabled;
+    this.emit();
+  }
+
+  setToolMode(mode: "object" | "tile-paint" | "tile-erase"): void {
+    this.toolMode = mode;
+    this.emit();
+  }
+
+  setTileBrush(frameName: string): void {
+    this.recordHistory();
+    this.scene = withUpdatedAt(this.scene, {
+      tileMap: {
+        ...this.scene.tileMap,
+        brushFrameName: frameName
+      }
+    });
+    this.emit();
+  }
+
+  setTileLayer(layerId: TileLayer["id"]): void {
+    this.recordHistory();
+    this.scene = withUpdatedAt(this.scene, {
+      tileMap: {
+        ...this.scene.tileMap,
+        activeLayer: layerId
+      }
+    });
+    this.emit();
+  }
+
+  setCollisionOverlayVisible(visible: boolean): void {
+    this.recordHistory();
+    this.scene = withUpdatedAt(this.scene, {
+      tileMap: {
+        ...this.scene.tileMap,
+        showCollisionOverlay: visible
+      }
+    });
+    this.emit();
+  }
+
+  setTileset(asset: AssetSummary, frames: TileFrame[]): void {
+    this.recordHistory();
+    this.scene = withUpdatedAt(this.scene, {
+      tileMap: {
+        ...this.scene.tileMap,
+        tilesetAssetId: asset.id,
+        imageUrl: asset.url,
+        sheetUrl: asset.sheetUrl ?? "",
+        frames,
+        brushFrameName: this.scene.tileMap.brushFrameName || frames[0]?.name || ""
+      }
+    });
+    this.emit();
+  }
+
+  clearTileset(): void {
+    this.recordHistory();
+    this.scene = withUpdatedAt(this.scene, {
+      tileMap: {
+        ...createScene().tileMap,
+        activeLayer: this.scene.tileMap.activeLayer,
+        showCollisionOverlay: this.scene.tileMap.showCollisionOverlay
+      }
+    });
+    this.emit();
+  }
+
+  paintTileAt(point: { x: number; y: number }): void {
+    if (!this.scene.tileMap.tilesetAssetId || !this.scene.tileMap.brushFrameName) return;
+    const col = Math.floor(point.x / this.gridSize);
+    const row = Math.floor(point.y / this.gridSize);
+    if (col < 0 || row < 0) return;
+
+    const nextLayers = this.scene.tileMap.layers.map((layer) => {
+      if (layer.id !== this.scene.tileMap.activeLayer) return layer;
+      const withoutExisting = layer.tiles.filter((tile) => tile.col !== col || tile.row !== row);
+      return {
+        ...layer,
+        tiles: [...withoutExisting, { col, row, frameName: this.scene.tileMap.brushFrameName }]
+      };
+    });
+
+    this.recordHistory();
+    this.scene = withUpdatedAt(this.scene, {
+      tileMap: {
+        ...this.scene.tileMap,
+        layers: nextLayers
+      }
+    });
+    this.emit();
+  }
+
+  eraseTileAt(point: { x: number; y: number }): void {
+    const col = Math.floor(point.x / this.gridSize);
+    const row = Math.floor(point.y / this.gridSize);
+    if (col < 0 || row < 0) return;
+
+    const nextLayers = this.scene.tileMap.layers.map((layer) =>
+      layer.id === this.scene.tileMap.activeLayer
+        ? {
+            ...layer,
+            tiles: layer.tiles.filter((tile) => tile.col !== col || tile.row !== row)
+          }
+        : layer
+    );
+
+    this.recordHistory();
+    this.scene = withUpdatedAt(this.scene, {
+      tileMap: {
+        ...this.scene.tileMap,
+        layers: nextLayers
+      }
+    });
     this.emit();
   }
 
