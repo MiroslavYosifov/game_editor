@@ -16,11 +16,17 @@ export class PixiRenderer {
   private readonly app: Application;
   private readonly viewportBackground = new Graphics();
   private readonly world = new Container();
+  private readonly backgroundLayer = new Container();
+  private readonly tileLayer = new Container();
+  private readonly objectLayer = new Container();
+  private readonly overlayLayer = new Container();
   private readonly handleSize = 12;
   private readonly spriteAssetCache = new SpriteAssetCache();
   private readonly tilesetTextureCache = new TilesetTextureCache();
   private readonly selectionOverlayRenderer = new SelectionOverlayRenderer();
   private readonly camera = new Camera2D();
+  private lastBackgroundKey = "";
+  private lastTileLayerKey = "";
 
   constructor(
     private readonly host: HTMLElement,
@@ -36,7 +42,15 @@ export class PixiRenderer {
     this.app.stage.sortableChildren = true;
     this.world.sortableChildren = true;
     this.viewportBackground.zIndex = -2000;
+    this.backgroundLayer.zIndex = -1000;
+    this.tileLayer.zIndex = -500;
+    this.objectLayer.zIndex = 0;
+    this.overlayLayer.zIndex = 1000;
     this.app.stage.addChild(this.viewportBackground);
+    this.world.addChild(this.backgroundLayer);
+    this.world.addChild(this.tileLayer);
+    this.world.addChild(this.objectLayer);
+    this.world.addChild(this.overlayLayer);
     this.app.stage.addChild(this.world);
     this.view.setAttribute("aria-label", "2D scene WebGL viewport");
     this.view.setAttribute("role", "img");
@@ -109,17 +123,17 @@ export class PixiRenderer {
   }
 
   render(): void {
-    this.world.removeChildren().forEach((child) => child.destroy({ children: true }));
     this.updateCamera();
     this.drawViewportBackground();
     this.drawBackground();
-    this.drawSceneBounds();
     this.drawTileLayers();
+    this.objectLayer.removeChildren().forEach((child) => child.destroy({ children: true }));
     for (const object of this.state.scene.objects) {
       if (object.hidden) continue;
       this.drawObject(object);
     }
 
+    this.overlayLayer.removeChildren().forEach((child) => child.destroy({ children: true }));
     const selectedObjects = this.state.selectedObjects.filter((object) => !object.hidden);
     for (const object of selectedObjects) this.drawSelection(object, selectedObjects.length === 1);
   }
@@ -155,6 +169,11 @@ export class PixiRenderer {
   }
 
   private drawBackground(): void {
+    const key = `${this.state.scene.width}|${this.state.scene.height}|${this.state.gridSize}`;
+    if (this.lastBackgroundKey === key) return;
+    this.lastBackgroundKey = key;
+
+    this.backgroundLayer.removeChildren().forEach((child) => child.destroy({ children: true }));
     const width = this.state.scene.width;
     const height = this.state.scene.height;
     const grid = new Graphics();
@@ -176,37 +195,39 @@ export class PixiRenderer {
       grid.lineTo(width, y);
     }
 
-    this.world.addChild(grid);
-  }
+    this.backgroundLayer.addChild(grid);
 
-  private drawViewportBackground(): void {
-    this.viewportBackground.clear();
-    this.viewportBackground.beginFill(0xe2e8f0);
-    this.viewportBackground.drawRect(0, 0, this.host.clientWidth, this.host.clientHeight);
-    this.viewportBackground.endFill();
-  }
-
-  private updateCamera(): void {
-    this.camera.fitToViewport(this.host.clientWidth, this.host.clientHeight, this.state.scene.width, this.state.scene.height, 24);
-    const cameraState = this.camera.getState();
-    this.world.position.set(cameraState.x, cameraState.y);
-    this.world.scale.set(cameraState.scale);
-  }
-
-  private drawSceneBounds(): void {
     const bounds = new Graphics();
     bounds.zIndex = -999;
     bounds.lineStyle(2, 0x1f2937, 1);
     bounds.drawRect(0, 0, this.state.scene.width, this.state.scene.height);
-    this.world.addChild(bounds);
+    this.backgroundLayer.addChild(bounds);
   }
 
   private drawTileLayers(): void {
     const tileMap = this.state.scene.tileMap;
-    if (!tileMap.tilesetAssetId || !tileMap.imageUrl || tileMap.frames.length === 0) return;
+    const key = JSON.stringify({
+      asset: tileMap.tilesetAssetId,
+      image: tileMap.imageUrl,
+      grid: this.state.gridSize,
+      showCollisionOverlay: tileMap.showCollisionOverlay,
+      layers: tileMap.layers
+    });
+
+    if (!tileMap.tilesetAssetId || !tileMap.imageUrl || tileMap.frames.length === 0) {
+      if (this.lastTileLayerKey) {
+        this.lastTileLayerKey = "";
+        this.tileLayer.removeChildren().forEach((child) => child.destroy({ children: true }));
+      }
+      return;
+    }
 
     const textures = this.tilesetTextureCache.get(tileMap, () => this.render());
     if (!textures) return;
+    if (this.lastTileLayerKey === key) return;
+
+    this.lastTileLayerKey = key;
+    this.tileLayer.removeChildren().forEach((child) => child.destroy({ children: true }));
 
     for (const layer of tileMap.layers) {
       if (!layer.visible) continue;
@@ -222,9 +243,23 @@ export class PixiRenderer {
         sprite.height = this.state.gridSize;
         sprite.alpha = layer.id === "collision" ? 0.45 : 1;
         sprite.zIndex = layer.id === "collision" ? -450 : -500;
-        this.world.addChild(sprite);
+        this.tileLayer.addChild(sprite);
       }
     }
+  }
+
+  private drawViewportBackground(): void {
+    this.viewportBackground.clear();
+    this.viewportBackground.beginFill(0xe2e8f0);
+    this.viewportBackground.drawRect(0, 0, this.host.clientWidth, this.host.clientHeight);
+    this.viewportBackground.endFill();
+  }
+
+  private updateCamera(): void {
+    this.camera.fitToViewport(this.host.clientWidth, this.host.clientHeight, this.state.scene.width, this.state.scene.height, 24);
+    const cameraState = this.camera.getState();
+    this.world.position.set(cameraState.x, cameraState.y);
+    this.world.scale.set(cameraState.scale);
   }
 
   private drawObject(object: SceneObject): void {
@@ -271,7 +306,7 @@ export class PixiRenderer {
       display.addChild(shape);
     }
 
-    this.world.addChild(display);
+    this.objectLayer.addChild(display);
   }
 
   private createSpritePlaceholder(object: SceneObject): Graphics {
@@ -337,7 +372,7 @@ export class PixiRenderer {
 
   private drawSelection(object: SceneObject, showHandles: boolean): void {
     const selection = this.selectionOverlayRenderer.drawSelection(object, showHandles, (value) => this.toWorldPixels(value));
-    this.world.addChild(selection);
+    this.overlayLayer.addChild(selection);
   }
 
   private toColorNumber(value: string): number {

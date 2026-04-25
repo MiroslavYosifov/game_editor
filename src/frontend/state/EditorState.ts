@@ -180,6 +180,10 @@ export class EditorState {
     const row = Math.floor(point.y / this.gridSize);
     if (col < 0 || row < 0) return;
 
+    const activeLayer = this.scene.tileMap.layers.find((layer) => layer.id === this.scene.tileMap.activeLayer);
+    const existingTile = activeLayer?.tiles.find((tile) => tile.col === col && tile.row === row);
+    if (existingTile?.frameName === this.scene.tileMap.brushFrameName) return;
+
     const nextLayers = this.scene.tileMap.layers.map((layer) => {
       if (layer.id !== this.scene.tileMap.activeLayer) return layer;
       const withoutExisting = layer.tiles.filter((tile) => tile.col !== col || tile.row !== row);
@@ -203,6 +207,10 @@ export class EditorState {
     const col = Math.floor(point.x / this.gridSize);
     const row = Math.floor(point.y / this.gridSize);
     if (col < 0 || row < 0) return;
+
+    const activeLayer = this.scene.tileMap.layers.find((layer) => layer.id === this.scene.tileMap.activeLayer);
+    const hasTile = activeLayer?.tiles.some((tile) => tile.col === col && tile.row === row);
+    if (!hasTile) return;
 
     const nextLayers = this.scene.tileMap.layers.map((layer) =>
       layer.id === this.scene.tileMap.activeLayer
