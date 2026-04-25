@@ -1,32 +1,24 @@
-import { AnimatedSprite, Application, Assets, Container, Graphics, Rectangle, Sprite, Text, TextStyle, Texture } from "pixi.js";
+import { AnimatedSprite, Application, Container, Graphics, Sprite, Text, TextStyle } from "pixi.js";
 import type { SceneObject } from "../../shared/types";
 import { EditorState } from "../state/EditorState";
+import { Camera2D } from "./Camera2D";
+import { containsPoint, intersectsRect, isNear, toLocalPoint } from "./geometry";
+import { SelectionOverlayRenderer } from "./SelectionOverlayRenderer";
+import { SpriteAssetCache } from "./SpriteAssetCache";
 
 export type SelectionControl =
   | { type: "resize"; handle: ResizeHandle };
 
 export type ResizeHandle = "nw" | "ne" | "sw" | "se";
 
-type LoadedSpriteAsset =
-  | { kind: "texture"; texture: Texture }
-  | { kind: "textures"; textures: Texture[] };
-
-interface TexturePackerFrame {
-  frame: { x: number; y: number; w: number; h: number };
-}
-
-interface TexturePackerSheet {
-  frames: Record<string, TexturePackerFrame> | Array<TexturePackerFrame & { filename: string }>;
-}
-
 export class PixiRenderer {
   private readonly app: Application;
   private readonly viewportBackground = new Graphics();
   private readonly world = new Container();
   private readonly handleSize = 12;
-  private readonly spriteAssets = new Map<string, LoadedSpriteAsset>();
-  private readonly spriteAssetLoads = new Map<string, Promise<void>>();
-  private camera = { scale: 1, x: 0, y: 0 };
+  private readonly spriteAssetCache = new SpriteAssetCache();
+  private readonly selectionOverlayRenderer = new SelectionOverlayRenderer();
+  private readonly camera = new Camera2D();
 
   constructor(
     private readonly host: HTMLElement,
@@ -62,19 +54,11 @@ export class PixiRenderer {
   }
 
   toScenePoint(point: { x: number; y: number }): { x: number; y: number } {
-    return {
-      x: (point.x - this.camera.x) / this.camera.scale,
-      y: (point.y - this.camera.y) / this.camera.scale
-    };
+    return this.camera.toScenePoint(point);
   }
 
   toViewportRect(rect: { x: number; y: number; width: number; height: number }): { x: number; y: number; width: number; height: number } {
-    return {
-      x: rect.x * this.camera.scale + this.camera.x,
-      y: rect.y * this.camera.scale + this.camera.y,
-      width: rect.width * this.camera.scale,
-      height: rect.height * this.camera.scale
-    };
+    return this.camera.toViewportRect(rect);
   }
 
   render(): void {
@@ -91,11 +75,11 @@ export class PixiRenderer {
 
   hitTest(point: { x: number; y: number }): SceneObject | null {
     const sorted = [...this.state.scene.objects].sort((a, b) => b.zIndex - a.zIndex);
-    return sorted.find((object) => this.containsPoint(object, point)) ?? null;
+    return sorted.find((object) => containsPoint(object, point)) ?? null;
   }
 
   hitTestRect(rect: { x: number; y: number; width: number; height: number }): SceneObject[] {
-    return this.state.scene.objects.filter((object) => this.intersectsRect(object, rect));
+    return this.state.scene.objects.filter((object) => intersectsRect(object, rect));
   }
 
   hitSelectionControl(point: { x: number; y: number }): SelectionControl | null {
@@ -103,7 +87,7 @@ export class PixiRenderer {
     const selected = this.state.selectedObject;
     if (!selected) return null;
 
-    const local = this.toLocalPoint(selected, point);
+    const local = toLocalPoint(selected, point);
     const halfWidth = selected.width / 2;
     const halfHeight = selected.height / 2;
     const padding = 5;
@@ -115,64 +99,8 @@ export class PixiRenderer {
       { handle: "se", x: halfWidth + padding, y: halfHeight + padding }
     ];
 
-    const hit = handles.find((handle) => this.isNear(local, handle, this.toWorldPixels(this.handleSize) / 2));
+    const hit = handles.find((handle) => isNear(local, handle, this.toWorldPixels(this.handleSize) / 2));
     return hit ? { type: "resize", handle: hit.handle } : null;
-  }
-
-  private containsPoint(object: SceneObject, point: { x: number; y: number }): boolean {
-    const local = this.toLocalPoint(object, point);
-    return local.x >= -object.width / 2 && local.y >= -object.height / 2 && local.x <= object.width / 2 && local.y <= object.height / 2;
-  }
-
-  private intersectsRect(object: SceneObject, rect: { x: number; y: number; width: number; height: number }): boolean {
-    const bounds = this.getWorldBounds(object);
-    return (
-      bounds.x <= rect.x + rect.width &&
-      bounds.x + bounds.width >= rect.x &&
-      bounds.y <= rect.y + rect.height &&
-      bounds.y + bounds.height >= rect.y
-    );
-  }
-
-  private getWorldBounds(object: SceneObject): { x: number; y: number; width: number; height: number } {
-    const cx = object.x + object.width / 2;
-    const cy = object.y + object.height / 2;
-    const radians = (object.rotation * Math.PI) / 180;
-    const corners = [
-      { x: -object.width / 2, y: -object.height / 2 },
-      { x: object.width / 2, y: -object.height / 2 },
-      { x: -object.width / 2, y: object.height / 2 },
-      { x: object.width / 2, y: object.height / 2 }
-    ].map((corner) => ({
-      x: cx + corner.x * Math.cos(radians) - corner.y * Math.sin(radians),
-      y: cy + corner.x * Math.sin(radians) + corner.y * Math.cos(radians)
-    }));
-    const xs = corners.map((corner) => corner.x);
-    const ys = corners.map((corner) => corner.y);
-    const minX = Math.min(...xs);
-    const minY = Math.min(...ys);
-    return {
-      x: minX,
-      y: minY,
-      width: Math.max(...xs) - minX,
-      height: Math.max(...ys) - minY
-    };
-  }
-
-  private toLocalPoint(object: SceneObject, point: { x: number; y: number }): { x: number; y: number } {
-    const cx = object.x + object.width / 2;
-    const cy = object.y + object.height / 2;
-    const radians = (-object.rotation * Math.PI) / 180;
-    const dx = point.x - cx;
-    const dy = point.y - cy;
-    return {
-      x: dx * Math.cos(radians) - dy * Math.sin(radians),
-      y: dx * Math.sin(radians) + dy * Math.cos(radians)
-    };
-  }
-
-  private isNear(point: { x: number; y: number }, target: { x: number; y: number }, radius: number): boolean {
-    return Math.abs(point.x - target.x) <= radius && Math.abs(point.y - target.y) <= radius;
   }
 
   private drawBackground(): void {
@@ -208,15 +136,10 @@ export class PixiRenderer {
   }
 
   private updateCamera(): void {
-    const padding = 24;
-    const width = Math.max(1, this.host.clientWidth);
-    const height = Math.max(1, this.host.clientHeight);
-    const scale = Math.min((width - padding * 2) / this.state.scene.width, (height - padding * 2) / this.state.scene.height);
-    this.camera.scale = Math.max(0.1, Math.min(1, scale));
-    this.camera.x = Math.round((width - this.state.scene.width * this.camera.scale) / 2);
-    this.camera.y = Math.round((height - this.state.scene.height * this.camera.scale) / 2);
-    this.world.position.set(this.camera.x, this.camera.y);
-    this.world.scale.set(this.camera.scale);
+    this.camera.fitToViewport(this.host.clientWidth, this.host.clientHeight, this.state.scene.width, this.state.scene.height, 24);
+    const cameraState = this.camera.getState();
+    this.world.position.set(cameraState.x, cameraState.y);
+    this.world.scale.set(cameraState.scale);
   }
 
   private drawSceneBounds(): void {
@@ -314,7 +237,7 @@ export class PixiRenderer {
     const sprite = object.sprite;
     if (!sprite?.imageUrl && !sprite?.sheetUrl) return null;
 
-    const asset = this.getSpriteAsset(object);
+    const asset = this.spriteAssetCache.get(sprite, () => this.render());
     if (!asset) return null;
 
     const display =
@@ -335,90 +258,8 @@ export class PixiRenderer {
     return display;
   }
 
-  private getSpriteAsset(object: SceneObject): LoadedSpriteAsset | null {
-    const sprite = object.sprite;
-    if (!sprite) return null;
-
-    const key = `${sprite.sheetUrl}|${sprite.imageUrl}|${sprite.animation}`;
-    const loaded = this.spriteAssets.get(key);
-    if (loaded) return loaded;
-
-    if (!this.spriteAssetLoads.has(key)) {
-      const load = this.loadSpriteAsset(key, sprite.sheetUrl, sprite.imageUrl, sprite.animation)
-        .catch((error) => console.warn("[GameEditor] Failed to load sprite asset", error))
-        .finally(() => this.spriteAssetLoads.delete(key));
-      this.spriteAssetLoads.set(key, load);
-    }
-
-    return null;
-  }
-
-  private async loadSpriteAsset(key: string, sheetUrl: string, imageUrl: string, animation: string): Promise<void> {
-    if (sheetUrl) {
-      const [sheet, baseTexture] = await Promise.all([
-        fetch(sheetUrl).then((response) => {
-          if (!response.ok) throw new Error(`Spritesheet JSON failed: ${response.status}`);
-          return response.json() as Promise<TexturePackerSheet>;
-        }),
-        imageUrl ? (Assets.load(imageUrl) as Promise<Texture>) : Promise.reject(new Error("Spritesheet image URL is missing."))
-      ]);
-      const textures = this.createSpritesheetTextures(sheet, baseTexture, animation);
-      if (textures.length > 1) this.spriteAssets.set(key, { kind: "textures", textures });
-      else if (textures[0]) this.spriteAssets.set(key, { kind: "texture", texture: textures[0] });
-      this.render();
-      return;
-    }
-
-    if (imageUrl) {
-      const texture = (await Assets.load(imageUrl)) as Texture;
-      this.spriteAssets.set(key, { kind: "texture", texture });
-      this.render();
-    }
-  }
-
-  private createSpritesheetTextures(sheet: TexturePackerSheet, baseTexture: Texture, animation: string): Texture[] {
-    const entries = Array.isArray(sheet.frames)
-      ? sheet.frames.map((frame) => [frame.filename, frame] as const)
-      : Object.entries(sheet.frames ?? {});
-    const filtered = animation ? entries.filter(([name]) => name.toLowerCase().includes(animation.toLowerCase())) : entries;
-    const selected = filtered.length ? filtered : entries;
-
-    return selected
-      .filter(([, item]) => Boolean(item?.frame))
-      .map(([, item]) => {
-        const frame = item.frame;
-        return new Texture(baseTexture.baseTexture, new Rectangle(frame.x, frame.y, frame.w, frame.h));
-      });
-  }
-
   private drawSelection(object: SceneObject, showHandles: boolean): void {
-    const selection = new Graphics();
-    selection.position.set(object.x + object.width / 2, object.y + object.height / 2);
-    selection.rotation = (object.rotation * Math.PI) / 180;
-    selection.zIndex = 100000;
-    const padding = 5;
-    const handleSize = this.toWorldPixels(this.handleSize);
-    const halfHandle = handleSize / 2;
-    selection.lineStyle(this.toWorldPixels(2), 0xef4444, 1);
-    selection.drawRect(-object.width / 2 - padding, -object.height / 2 - padding, object.width + padding * 2, object.height + padding * 2);
-
-    if (!showHandles) {
-      this.world.addChild(selection);
-      return;
-    }
-
-    selection.beginFill(0xffffff);
-    selection.lineStyle(this.toWorldPixels(2), 0xef4444, 1);
-    for (const handle of [
-      { x: -object.width / 2 - padding, y: -object.height / 2 - padding },
-      { x: object.width / 2 + padding, y: -object.height / 2 - padding },
-      { x: -object.width / 2 - padding, y: object.height / 2 + padding },
-      { x: object.width / 2 + padding, y: object.height / 2 + padding }
-    ]) {
-      selection.drawRect(handle.x - halfHandle, handle.y - halfHandle, handleSize, handleSize);
-    }
-    selection.endFill();
-
+    const selection = this.selectionOverlayRenderer.drawSelection(object, showHandles, (value) => this.toWorldPixels(value));
     this.world.addChild(selection);
   }
 
@@ -429,6 +270,6 @@ export class PixiRenderer {
   }
 
   private toWorldPixels(value: number): number {
-    return value / this.camera.scale;
+    return this.camera.toWorldPixels(value);
   }
 }
