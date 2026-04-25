@@ -2,6 +2,8 @@ import type { AssetSummary, PhysicsMode, SceneObject, TileFrame } from "../../sh
 import { EditorState } from "../state/EditorState";
 
 export class InspectorPanel {
+  private tileUploadOpen = false;
+
   constructor(
     private readonly root: HTMLElement,
     private readonly state: EditorState,
@@ -171,6 +173,11 @@ export class InspectorPanel {
   }
 
   private bindTileInputs(): void {
+    this.root.querySelector<HTMLInputElement>("[data-toggle-tile-upload]")?.addEventListener("change", (event) => {
+      this.tileUploadOpen = (event.target as HTMLInputElement).checked;
+      this.render();
+    });
+
     const tilesetSelect = this.root.querySelector<HTMLSelectElement>("[data-tileset-asset]");
     tilesetSelect?.addEventListener("change", () => void this.onSelectTileset(tilesetSelect.value));
 
@@ -193,6 +200,7 @@ export class InspectorPanel {
       if (sheetImageInput) sheetImageInput.value = "";
       if (sheetJsonInput) sheetJsonInput.value = "";
       if (!asset) return;
+      this.tileUploadOpen = false;
       await this.onSelectTileset(asset.id);
     });
 
@@ -350,7 +358,9 @@ export class InspectorPanel {
     const tileMap = this.state.scene.tileMap;
     const selectedTileset = spritesheets.find((asset) => asset.id === tileMap.tilesetAssetId);
     return `
-      <h2>Tiles</h2>
+      <div class="panel-title-row">
+        <h2>Tiles</h2>
+      </div>
       <div class="asset-select-row">
         <label class="field">
           <span>Tileset</span>
@@ -362,8 +372,12 @@ export class InspectorPanel {
         <button type="button" class="asset-refresh" data-refresh-tile-assets title="Refresh tilesets" aria-label="Refresh tilesets">Refresh</button>
         <button type="button" class="asset-delete" data-delete-tile-asset ${selectedTileset ? "" : "disabled"} title="Delete selected tileset" aria-label="Delete selected tileset">Delete</button>
       </div>
+      <label class="toolbar-check tile-upload-toggle">
+        <input type="checkbox" data-toggle-tile-upload ${this.tileUploadOpen ? "checked" : ""} />
+        <span>Upload sprite</span>
+      </label>
       ${this.tileAssetBrowser(spritesheets, selectedTileset)}
-      <div class="sheet-upload">
+      <div class="sheet-upload" ${this.tileUploadOpen ? "" : "hidden"}>
         <strong>Tileset upload</strong>
         <label class="field">
           <span>Image PNG/JPG/WebP</span>

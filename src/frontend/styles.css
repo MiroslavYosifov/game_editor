@@ -243,6 +243,24 @@ h3 {
   margin: 0 0 14px;
 }
 
+.panel-title-row {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.panel-title-row h2 {
+  margin-bottom: 0;
+}
+
+.tile-upload-toggle {
+  flex: 0 0 auto;
+  margin-bottom: 12px;
+}
+
 h2 {
   font-size: 18px;
 }
@@ -524,6 +542,10 @@ h3 {
   gap: 8px;
   margin-bottom: 12px;
   padding: 10px;
+}
+
+.sheet-upload[hidden] {
+  display: none;
 }
 
 [data-upload-panel][hidden] {
